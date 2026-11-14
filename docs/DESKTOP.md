@@ -26,7 +26,7 @@ npm run desktop:install
 | --- | --- | --- |
 | macOS | launchd agent (restarts if it stops) | `~/Library/LaunchAgents/com.trackpm.desktop.plist` |
 | Linux | systemd user service (restarts if it stops) | `~/.config/systemd/user/track-pm.service` |
-| Windows | Task Scheduler task "TrackPM" at logon | — |
+| Windows | Shortcut in your own Startup folder; **no admin rights needed**. It starts hidden, with no window. | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Track PM.lnk` (or `Track PM.cmd` on locked-down PCs) |
 
 The first start builds the app, which takes a few minutes. Then open http://127.0.0.1:3000.
 
@@ -36,8 +36,9 @@ There's nothing to do. Merge a PR into `main`, and within a couple of minutes th
 
 ```bash
 npm run desktop:status      # running commit, last failure, data location, recent log
-npm run desktop:uninstall   # stop starting at login (data is kept)
-npm run desktop             # run in the foreground instead of as a service (Ctrl+C to stop)
+npm run desktop:stop        # stop it now (it starts again at next login)
+npm run desktop:uninstall   # stop it and don't start at login any more (data is kept)
+npm run desktop             # run in the foreground instead of at login (Ctrl+C to stop)
 ```
 
 Logs are in `.releases/`:
@@ -60,6 +61,8 @@ A commit that fails is logged and isn't retried; the next commit on `main` is tr
 
 If the updater script itself changes on `main`, it updates its own clone and restarts.
 
+Only one copy runs at a time. Starting a second one (for example `npm run desktop` while the login copy is running) just says it's already running.
+
 ## Your data
 
 Data lives outside the build folders, so every update keeps it:
@@ -81,6 +84,12 @@ To back up, stop the app (`npm run desktop:uninstall`, or Ctrl+C), copy the `dat
 | `DATABASE_PATH` | `data/app.db` | Where the data lives |
 
 After changing `.env.local`, restart the updater: uninstall and install again, or restart `npm run desktop`.
+
+## Troubleshooting
+
+- **`npm` not found:** install Node.js 22.5 or newer (from nodejs.org, `winget install OpenJS.NodeJS.LTS`, or nvm), then open a new terminal.
+- **"Access is denied" from `schtasks` on Windows:** that error came from an older version of the installer, which needed admin rights. Run `git pull`, then `npm run desktop:install` again.
+- **The app doesn't open:** run `npm run desktop:status` and look at `.releases/runner.log`. The first start can take a few minutes.
 
 ## Notes for a work computer
 
