@@ -2,8 +2,9 @@
 // Runs Track PM on your own computer and keeps it up to date with `main`.
 //
 //   node scripts/desktop-runner.mjs run        # serve + auto-update (foreground)
-//   node scripts/desktop-runner.mjs install    # start automatically at login (macOS / Linux / Windows)
-//   node scripts/desktop-runner.mjs uninstall
+//   node scripts/desktop-runner.mjs install    # start automatically at login (macOS / Linux / Windows, no admin needed)
+//   node scripts/desktop-runner.mjs uninstall  # stop it and don't start at login any more
+//   node scripts/desktop-runner.mjs stop       # stop it now (it starts again at next login)
 //   node scripts/desktop-runner.mjs status
 //
 // How it works:
@@ -40,6 +41,7 @@ const REL = join(ROOT, ".releases");
 const STATE_FILE = join(REL, "state.json");
 const LOG_FILE = join(REL, "runner.log");
 const SERVER_LOG = join(REL, "server.log");
+const PID_FILE = join(REL, "pids.json");
 const WIN = process.platform === "win32";
 
 const rootEnv = readEnvFile(join(ROOT, ".env.local"));
@@ -77,6 +79,7 @@ function run(cmd, args, cwd, env = {}) {
     env: { ...process.env, ...env },
     encoding: "utf8",
     shell: WIN && cmd === "npm", // npm is npm.cmd on Windows
+    windowsHide: true, // no console window flashing up every poll
     maxBuffer: 64 * 1024 * 1024,
   });
   if (r.status !== 0) {
@@ -97,6 +100,27 @@ function readState() {
 }
 function writeState(s) {
   writeFileSync(STATE_FILE, JSON.stringify(s, null, 2));
+}
+
+/** PIDs of the running updater and app server, so `stop` works without a service manager (Windows). */
+function readPids() {
+  try {
+    return JSON.parse(readFileSync(PID_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}
+function writePids(p) {
+  writeFileSync(PID_FILE, JSON.stringify({ ...readPids(), ...p }));
+}
+function isAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === "EPERM";
+  }
 }
 
 /** Absolute database path shared by every release. */
@@ -162,6 +186,7 @@ async function startServer(sha) {
       env: { ...process.env, ...rootEnv, DATABASE_PATH: databasePath(), NODE_ENV: "production" },
       stdio: ["ignore", out, out],
       detached: !WIN,
+      windowsHide: true,
     },
   );
   let exited = false;
@@ -177,6 +202,7 @@ async function startServer(sha) {
       const r = await fetch(url);
       if (r.ok) {
         server = child;
+        writePids({ server: child.pid });
         log(`Serving ${sha.slice(0, 7)} at ${url}`);
         return;
       }
@@ -215,6 +241,7 @@ async function stopServer() {
   const s = server;
   server = null;
   await stopProcess(s);
+  writePids({ server: null });
 }
 
 // ---------------------------------------------------------------- update loop
@@ -267,8 +294,9 @@ async function updateSelf(target) {
   if (readFileSync(SCRIPT, "utf8") === before) return;
   log("The updater itself changed; restarting it.");
   await stopServer();
+  rmSync(PID_FILE, { force: true });
   if (process.env.TRACK_PM_SERVICE === "1") process.exit(0); // launchd/systemd restart us
-  spawn(process.execPath, [SCRIPT, "run"], { cwd: ROOT, detached: true, stdio: "ignore" }).unref();
+  spawn(process.execPath, [SCRIPT, "run"], { cwd: ROOT, detached: true, stdio: "ignore", windowsHide: true }).unref();
   process.exit(0);
 }
 
@@ -290,6 +318,12 @@ async function tick() {
 }
 
 async function runLoop() {
+  const existing = readPids().runner;
+  if (existing && existing !== process.pid && isAlive(existing)) {
+    console.log(`Track PM is already running (pid ${existing}). Use "npm run desktop:status" or "npm run desktop:stop".`);
+    process.exit(0);
+  }
+  writeFileSync(PID_FILE, JSON.stringify({ runner: process.pid, server: null }));
   log(`Track PM desktop runner: ${REMOTE}/${BRANCH}, checking every ${POLL_MS / 1000}s, data at ${databasePath()}`);
   const state = readState();
   if (state.current && isBuilt(state.current)) {
@@ -312,6 +346,7 @@ async function runLoop() {
   const shutdown = async () => {
     log("Stopping.");
     await stopServer();
+    rmSync(PID_FILE, { force: true });
     process.exit(0);
   };
   process.on("SIGINT", shutdown);
@@ -377,10 +412,38 @@ WantedBy=default.target
     console.log(`Installed ${unitPath}. Track PM now starts at login and keeps itself updated.`);
     console.log("To keep it running while logged out: loginctl enable-linger $USER");
   } else if (WIN) {
-    const cmd = `powershell.exe -NoProfile -WindowStyle Hidden -Command "Set-Location '${ROOT}'; & '${process.execPath}' '${SCRIPT}' run"`;
-    run("schtasks", ["/Create", "/TN", "TrackPM", "/TR", cmd, "/SC", "ONLOGON", "/RL", "LIMITED", "/F"], ROOT);
-    run("schtasks", ["/Run", "/TN", "TrackPM"], ROOT);
-    console.log("Installed scheduled task \"TrackPM\". Track PM now starts at login and keeps itself updated.");
+    // A shortcut in the user's own Startup folder: no admin rights needed (unlike a logon scheduled task).
+    // It runs a hidden PowerShell that starts the updater with no window.
+    const lnk = winShortcutPath();
+    const launch = winLaunchCommand();
+    const psArgs = `-NoProfile -WindowStyle Hidden -EncodedCommand ${encodePs(launch)}`;
+    let added;
+    try {
+      powershell(
+        [
+          `$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${psq(lnk)})`,
+          `$s.TargetPath = 'powershell.exe'`,
+          `$s.Arguments = ${psq(psArgs)}`,
+          `$s.WorkingDirectory = ${psq(ROOT)}`,
+          `$s.WindowStyle = 7`,
+          `$s.Description = 'Track PM (auto-updating from ${BRANCH})'`,
+          `$s.Save()`,
+        ].join("; "),
+      );
+      added = lnk;
+    } catch {
+      // Locked-down PowerShell (Constrained Language mode) can't create shortcuts.
+      // Fall back to a .cmd in the same Startup folder. A console flashes briefly at login.
+      added = lnk.replace(/\.lnk$/, ".cmd");
+      writeFileSync(added, `@echo off\r\nstart "" /min powershell.exe ${psArgs}\r\n`);
+    }
+    console.log(`Added "${added}". Track PM now starts when you log in and keeps itself updated.`);
+    if (isAlive(readPids().runner)) {
+      console.log("It's already running.");
+    } else {
+      powershell(launch);
+      console.log("Started it now.");
+    }
   } else {
     throw new Error(`Unsupported platform ${process.platform}; run "node scripts/desktop-runner.mjs run" yourself.`);
   }
@@ -396,10 +459,57 @@ function uninstall() {
     rmSync(unitPath, { force: true });
     spawnSync("systemctl", ["--user", "daemon-reload"]);
   } else if (WIN) {
-    spawnSync("schtasks", ["/End", "/TN", "TrackPM"]);
-    spawnSync("schtasks", ["/Delete", "/TN", "TrackPM", "/F"]);
+    stop();
+    rmSync(winShortcutPath(), { force: true });
+    rmSync(winShortcutPath().replace(/\.lnk$/, ".cmd"), { force: true });
+    spawnSync("schtasks", ["/Delete", "/TN", "TrackPM", "/F"], { windowsHide: true }); // older installs
   }
   console.log("Removed the login service. Your data and releases are untouched.");
+}
+
+/** Stop the running updater and its app server (it starts again at next login). */
+function stop() {
+  if (process.platform === "darwin" && existsSync(plistPath)) {
+    spawnSync("launchctl", ["bootout", `gui/${process.getuid()}`, plistPath]);
+  } else if (process.platform === "linux" && existsSync(unitPath)) {
+    spawnSync("systemctl", ["--user", "stop", "track-pm.service"]);
+  }
+  const { runner, server: srv } = readPids();
+  let stopped = false;
+  for (const pid of [srv, runner]) {
+    if (!isAlive(pid)) continue;
+    try {
+      process.kill(pid);
+      stopped = true;
+    } catch {}
+  }
+  rmSync(PID_FILE, { force: true });
+  console.log(stopped ? "Stopped Track PM." : "Track PM wasn't running.");
+}
+
+// ---------------------------------------------------------------- Windows helpers
+
+function winShortcutPath() {
+  const appData = process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+  return join(appData, "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Track PM.lnk");
+}
+
+/** PowerShell single-quoted literal. */
+function psq(s) {
+  return `'${String(s).replace(/'/g, "''")}'`;
+}
+
+/** Base64 UTF-16LE, for powershell -EncodedCommand (avoids all quoting problems with paths). */
+function encodePs(cmd) {
+  return Buffer.from(cmd, "utf16le").toString("base64");
+}
+
+function winLaunchCommand() {
+  return `Start-Process -FilePath ${psq(process.execPath)} -ArgumentList @(${psq(`"${SCRIPT}"`)}, 'run') -WorkingDirectory ${psq(ROOT)} -WindowStyle Hidden`;
+}
+
+function powershell(cmd) {
+  run("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", encodePs(cmd)], ROOT);
 }
 
 async function status() {
@@ -408,6 +518,8 @@ async function status() {
   console.log(`Running:   ${s.current ? s.current.slice(0, 7) : "—"}${s.deployedAt ? ` (since ${s.deployedAt})` : ""}`);
   if (s.failed) console.log(`Failed:    ${s.failed.slice(0, 7)} at ${s.failedAt} (see ${LOG_FILE})`);
   console.log(`Data:      ${databasePath()}`);
+  const pids = readPids();
+  console.log(`Updater:   ${isAlive(pids.runner) ? `running (pid ${pids.runner})` : "not running"}`);
   try {
     const r = await fetch(`http://${HOST}:${PORT}/`);
     console.log(`App:       http://${HOST}:${PORT}/ → HTTP ${r.status}`);
@@ -425,7 +537,8 @@ if (cmd === "run") await runLoop();
 else if (cmd === "install") install();
 else if (cmd === "uninstall") uninstall();
 else if (cmd === "status") await status();
+else if (cmd === "stop") stop();
 else {
-  console.error("Usage: node scripts/desktop-runner.mjs run|install|uninstall|status");
+  console.error("Usage: node scripts/desktop-runner.mjs run|install|uninstall|stop|status");
   process.exit(1);
 }

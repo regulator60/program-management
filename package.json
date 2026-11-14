@@ -13,7 +13,8 @@
     "desktop": "node scripts/desktop-runner.mjs run",
     "desktop:install": "node scripts/desktop-runner.mjs install",
     "desktop:uninstall": "node scripts/desktop-runner.mjs uninstall",
-    "desktop:status": "node scripts/desktop-runner.mjs status"
+    "desktop:status": "node scripts/desktop-runner.mjs status",
+    "desktop:stop": "node scripts/desktop-runner.mjs stop"
   },
   "dependencies": {
     "next": "16.4.6",
