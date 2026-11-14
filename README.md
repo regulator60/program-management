@@ -44,6 +44,18 @@ Then:
 
 > This app is built to run **locally for one user**: it has no login. Add authentication before you host it anywhere shared.
 
+### Keep it running on your desktop
+
+To run the app on your own computer, start it at login, and have it update itself when `main` changes:
+
+```bash
+git clone https://github.com/regulator60/program-management.git ~/track-pm && cd ~/track-pm
+cp .env.example .env.local   # add tokens
+npm run desktop:install      # macOS, Linux or Windows
+```
+
+Each new commit on `main` is built and tested on the side before it replaces the running version. If anything fails, the old version keeps running. Details are in [`docs/DESKTOP.md`](docs/DESKTOP.md).
+
 ## Getting data in
 
 - **Jira REST**: set `JIRA_PAT`, or `JIRA_USER`/`JIRA_PASSWORD`, then **Sync now**. This pulls your scope JQL, the intake JQL, and one hop of linked issues. Each sync records date and status changes, which powers the "dependency dates changed" view.
@@ -103,4 +115,5 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/lib/store.ts`: SQLite access, staged edits, change history
 - `src/lib/notes.ts`, `src/lib/noteInsights.ts`, `src/lib/documents.ts`: action-item extraction, Jira suggestions, Google Docs / .docx reading
 - `scripts/build-demo-site.mjs`: static snapshot for GitHub Pages
+- `scripts/desktop-runner.mjs`: runs the app on your desktop and updates it from `main`
 - `src/app/`: pages (server components) and server actions
