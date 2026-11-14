@@ -19,6 +19,8 @@ import { jiraAuthHeader } from "@/lib/jira/client";
 import { listPendingEdits, recentSyncs } from "@/lib/store";
 import { withBase } from "@/lib/paths";
 
+export const metadata = { title: "Data & Jira sync" };
+
 export default function Page() {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
@@ -40,14 +42,14 @@ async function Sync() {
 
   return (
     <>
-      <PageHeader title="Data & Jira sync" subtitle={`${issueCount} issues stored locally.`} />
+      <PageHeader eyebrow="Data" title="Data & Jira sync" subtitle={`${issueCount} issues stored locally.`} />
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="1 · Pull from Jira (REST)">
           <dl className="mb-3 grid grid-cols-[120px_1fr] gap-y-1 text-sm">
             <dt className="text-muted">Base URL</dt>
-            <dd>{cfg.jira.baseUrl || <span className="text-amber-600">not set — <Link href="/settings" className="underline">Settings</Link></span>}</dd>
+            <dd>{cfg.jira.baseUrl || <span className="text-warning-ink">not set — <Link href="/settings" className="underline">Settings</Link></span>}</dd>
             <dt className="text-muted">Credentials</dt>
-            <dd>{hasCreds ? "found in environment" : <span className="text-amber-600">set JIRA_PAT in .env.local</span>}</dd>
+            <dd>{hasCreds ? "found in environment" : <span className="text-warning-ink">set JIRA_PAT in .env.local</span>}</dd>
             <dt className="text-muted">Scope JQL</dt>
             <dd className="font-mono text-xs">{cfg.jira.scopeJql}</dd>
             <dt className="text-muted">Intake JQL</dt>
@@ -79,7 +81,7 @@ async function Sync() {
                       <Td>
                         <form action={discardEditAction}>
                           <input type="hidden" name="id" value={e.id} />
-                          <button className="text-xs text-red-600 hover:underline">discard</button>
+                          <button className="text-xs font-medium text-critical-ink hover:underline">discard</button>
                         </form>
                       </Td>
                     </tr>
@@ -133,7 +135,7 @@ async function Sync() {
           </p>
           {missing.length > 0 && (
             <details className="mt-3 text-xs">
-              <summary className="cursor-pointer text-amber-700 dark:text-amber-400">
+              <summary className="cursor-pointer text-warning-ink">
                 {missing.length} linked issue(s) aren&rsquo;t loaded yet — JQL to export them
               </summary>
               <textarea readOnly rows={3} className={inputCls + " mt-2 font-mono text-xs"} value={`key in (${missing.join(", ")})`} />
@@ -172,7 +174,7 @@ async function Sync() {
           ) : (
             <ul className="space-y-1 text-xs">
               {logs.map((l) => (
-                <li key={l.id} className={l.ok ? "" : "text-red-600"}>
+                <li key={l.id} className={l.ok ? "" : "text-critical-ink"}>
                   <span className="text-muted">{l.finished_at?.slice(0, 16).replace("T", " ")}</span> <b>{l.source}</b> {l.message}
                 </li>
               ))}

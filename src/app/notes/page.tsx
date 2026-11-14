@@ -18,6 +18,8 @@ import { withBase } from "@/lib/paths";
 import { listActionItems, listNotes } from "@/lib/store";
 import type { ActionItem, Note } from "@/lib/types";
 
+export const metadata = { title: "Meeting notes" };
+
 export default function Page() {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
@@ -59,6 +61,7 @@ async function Notes() {
   return (
     <>
       <PageHeader
+        eyebrow="Governance"
         title="Meeting notes"
         subtitle="Import notes from Google Docs or attach a file. Action items are picked out automatically, and Jira updates are suggested for you to review."
       />
@@ -202,7 +205,7 @@ function NoteCard({
       }
     >
       <div className="grid gap-4 md:grid-cols-[3fr_2fr]">
-        <details className="self-start rounded bg-zinc-50 p-3 dark:bg-zinc-900">
+        <details className="self-start rounded-lg bg-panel-2 p-3">
           <summary className="cursor-pointer text-xs font-semibold uppercase text-muted">
             Notes ({n.body.split("\n").length} lines)
           </summary>

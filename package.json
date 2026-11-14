@@ -17,6 +17,8 @@
     "desktop:stop": "node scripts/desktop-runner.mjs stop"
   },
   "dependencies": {
+    "cmdk": "1.1.1",
+    "lucide-react": "1.73.0",
     "next": "16.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"

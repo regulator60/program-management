@@ -9,22 +9,29 @@ export type GanttRow = {
   section?: string; // header row label instead of an issue
 };
 
-const ROW_H = 26;
+const ROW_H = 30;
 const LABEL_W = 380;
-const HEADER_H = 40;
+const HEADER_H = 44;
 
+/**
+ * Restrained palette: work bars in one blue, milestones in ink/accent, other
+ * tracks in slate. Status colors are reserved for state (done, late, conflict).
+ */
 const FILL: Record<Level, string> = {
-  outcome: "#8b5cf6",
-  cpm: "#e11d48",
-  ipm_intent: "#f59e0b",
-  ipm: "#eab308",
-  epic: "#6366f1",
-  story: "#94a3b8",
-  risk: "#ef4444",
-  decision: "#0ea5e9",
-  action: "#14b8a6",
+  outcome: "#94a3b8",
+  cpm: "#0f172a",
+  ipm_intent: "#1c5cab",
+  ipm: "#64748b",
+  epic: "#2a78d6",
+  story: "#86b6ef",
+  risk: "#d03b3b",
+  decision: "#64748b",
+  action: "#64748b",
   other: "#94a3b8",
 };
+const DONE = "#0ca30c";
+const LATE = "#d03b3b";
+const EXTERNAL = "#94a3b8";
 
 const DAY = 86_400_000;
 const toDay = (iso: string) => Math.floor(Date.parse(iso + "T00:00:00Z") / DAY);
@@ -93,17 +100,17 @@ export function Gantt({
         // Milestones are points: aim at the diamond, not the start of the span.
         const x2 = isMilestone(d.successor.level) && d.successor.dueDate ? x(d.successor.dueDate) - 6 : sg.x1;
         const y2 = y(si) + ROW_H / 2;
-        const color = d.health === "conflict" ? "#dc2626" : d.health === "overdue" ? "#ea580c" : d.health === "tight" ? "#d97706" : "#64748b";
+        const color = d.health === "conflict" ? "#d03b3b" : d.health === "overdue" ? "#ec835a" : d.health === "tight" ? "#c98500" : "#94a3b8";
         const mid = Math.max(x1 + 8, Math.min(x2 - 8, x1 + 8));
         return [{ key: `${d.predecessor.key}-${d.successor.key}`, path: `M${x1},${y1} H${mid} V${y2} H${x2 - 2}`, color, title: d.reason }];
       })
     : [];
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-line bg-panel">
+    <div className="overflow-x-auto rounded-xl border border-line bg-panel shadow-card">
       <svg width={width} height={height} className="block text-[11px]" role="img" aria-label="Gantt chart">
         <defs>
-          {["#dc2626", "#ea580c", "#d97706", "#64748b"].map((c) => (
+          {["#d03b3b", "#ec835a", "#c98500", "#94a3b8"].map((c) => (
             <marker key={c} id={`arrow-${c.slice(1)}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
               <path d="M0,0 L8,4 L0,8 z" fill={c} />
             </marker>
@@ -112,7 +119,7 @@ export function Gantt({
 
         {/* zebra + grid */}
         {rows.map((r, i) => (
-          <rect key={`bg${i}`} x={0} y={y(i)} width={width} height={ROW_H} fill={r.section ? "var(--line)" : i % 2 ? "transparent" : "rgba(127,127,127,0.04)"} />
+          <rect key={`bg${i}`} x={0} y={y(i)} width={width} height={ROW_H} fill={r.section ? "var(--panel-2)" : i % 2 ? "transparent" : "rgba(127,127,127,0.035)"} />
         ))}
         {ticks.map((t) => (
           <g key={t.x}>
@@ -123,13 +130,14 @@ export function Gantt({
         <line x1={LABEL_W} x2={LABEL_W} y1={0} y2={height} stroke="var(--line)" />
 
         {/* today */}
-        <line x1={x(today)} x2={x(today)} y1={HEADER_H - 10} y2={height} stroke="#2563eb" strokeDasharray="4 3" />
-        <text x={x(today) + 3} y={HEADER_H - 4} fill="#2563eb" fontWeight={600}>Today</text>
+        <line x1={x(today)} x2={x(today)} y1={HEADER_H - 10} y2={height} stroke="var(--accent)" strokeWidth={1.5} />
+        <rect x={x(today) - 20} y={HEADER_H - 16} width={40} height={14} rx={3} fill="var(--accent)" />
+        <text x={x(today)} y={HEADER_H - 5.5} fill="#fff" fontWeight={600} fontSize={10} textAnchor="middle">Today</text>
 
         {rows.map((r, i) => {
           if (r.section) {
             return (
-              <text key={`s${i}`} x={8} y={y(i) + 17} fontWeight={700} fill="var(--foreground)">
+              <text key={`s${i}`} x={12} y={y(i) + 19} fontWeight={600} fontSize={11} fill="var(--ink-2)" letterSpacing="0.04em">
                 {r.section}
               </text>
             );
@@ -138,15 +146,15 @@ export function Gantt({
           const g = barGeom(it);
           const late = !!it.dueDate && it.dueDate < today && it.statusCategory !== "done";
           const label = it.summary.length > 40 - r.depth * 2 ? it.summary.slice(0, 38 - r.depth * 2) + "…" : it.summary;
-          const color = FILL[it.level];
+          const color = it.inScope ? FILL[it.level] : EXTERNAL;
           const cy = y(i) + ROW_H / 2;
           const tip = `${it.key} · ${it.summary}\n${it.startDate ?? "?"} → ${it.dueDate ?? "?"} · ${it.status}${it.pendingFields.length ? "\n(pending local edits)" : ""}`;
           return (
             <g key={it.key}>
               <a href={withBase(`/items/${encodeURIComponent(it.key)}`)}>
                 <title>{tip}</title>
-                <text x={8 + r.depth * 14} y={cy + 4} fill={it.inScope ? "var(--foreground)" : "var(--muted)"}>
-                  <tspan fontFamily="var(--font-geist-mono)" fontSize={9} fill={color} fontWeight={700}>
+                <text x={12 + r.depth * 14} y={cy + 4} fontSize={12} fill={it.inScope ? "var(--foreground)" : "var(--muted)"} fontWeight={it.level === "outcome" || it.level === "cpm" ? 600 : 400}>
+                  <tspan fontFamily="var(--font-geist-mono)" fontSize={9} fill="var(--muted)" fontWeight={600}>
                     {LEVEL_SHORT[it.level]}{" "}
                   </tspan>
                   <tspan fontFamily="var(--font-geist-mono)" fontSize={10}>{it.key} </tspan>
@@ -164,8 +172,8 @@ export function Gantt({
                       {it.dueDate && (
                         <path
                           d={`M${x(it.dueDate) + dayWidth / 2},${cy - 7} l7,7 l-7,7 l-7,-7 z`}
-                          fill={it.statusCategory === "done" ? "#10b981" : color}
-                          stroke={late ? "#dc2626" : "none"}
+                          fill={it.statusCategory === "done" ? DONE : late ? LATE : color}
+                          stroke="var(--panel)"
                           strokeWidth={2}
                         />
                       )}
@@ -177,9 +185,9 @@ export function Gantt({
                       width={Math.max(g.x2 - g.x1, 3)}
                       height={14}
                       rx={3}
-                      fill={it.statusCategory === "done" ? "#10b981" : color}
+                      fill={it.statusCategory === "done" ? DONE : color}
                       opacity={it.inScope ? 0.9 : 0.5}
-                      stroke={late ? "#dc2626" : it.pendingFields.length ? "#c026d3" : "none"}
+                      stroke={late ? LATE : it.pendingFields.length ? "#c026d3" : "none"}
                       strokeWidth={2}
                       strokeDasharray={it.pendingFields.length ? "3 2" : undefined}
                     />

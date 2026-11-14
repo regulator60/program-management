@@ -1,3 +1,4 @@
+import { Scale, ShieldAlert } from "lucide-react";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { FilterBar } from "@/components/client";
@@ -6,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { isLate } from "@/lib/hierarchy";
 import { loadModel, matchesFilter, parseFilter, type Model } from "@/lib/model";
 import type { IssueView } from "@/lib/store";
+
+export const metadata = { title: "Risks & decisions" };
 
 export default function Page(props: PageProps<"/raid">) {
   return (
@@ -36,6 +39,7 @@ async function Raid({ searchParams }: { searchParams: PageProps<"/raid">["search
   return (
     <>
       <PageHeader
+        eyebrow="Governance"
         title="Risks & decisions"
         subtitle="Tier 3 = your track only. Tiers 1 and 2 span multiple tracks."
       />
@@ -60,7 +64,7 @@ function TierTable({ title, items, m }: { title: string; items: IssueView[]; m: 
       .sort((a, b) => (a.dueDate ?? "9") < (b.dueDate ?? "9") ? -1 : 1),
   }));
   return (
-    <Card title={`${title} (${items.length})`}>
+    <Card title={`${title} (${items.length})`} icon={title === "Risks" ? ShieldAlert : Scale} flush>
       <Table>
         <thead>
           <tr>
@@ -93,7 +97,7 @@ function TierTable({ title, items, m }: { title: string; items: IssueView[]; m: 
 function TierRows({ t, rows, m }: { t: string; rows: IssueView[]; m: Model }) {
   return (
     <>
-      <tr className="bg-zinc-50 dark:bg-zinc-900">
+      <tr className="bg-panel-2">
         <Td colSpan={7} className="text-xs font-semibold uppercase tracking-wide">
           {t === "none" ? "No tier" : `Tier ${t}`} <span className="font-normal normal-case text-muted">— {TIER_HELP[t]}</span>
         </Td>

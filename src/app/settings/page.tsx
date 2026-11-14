@@ -6,6 +6,8 @@ import { getConfig } from "@/lib/config";
 import { getDb } from "@/lib/db";
 import { jiraAuthHeader } from "@/lib/jira/client";
 
+export const metadata = { title: "Settings" };
+
 export default function Page() {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
@@ -34,7 +36,7 @@ async function Settings() {
   const cfg = getConfig(getDb());
   return (
     <>
-      <PageHeader title="Settings" subtitle="Maps the app onto your Jira. Saved in the local SQLite database." />
+      <PageHeader eyebrow="Data" title="Settings" subtitle="Maps the app onto your Jira. Saved in the local SQLite database." />
       <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
         <Card title="Configuration (JSON)">
           <form action={saveSettingsAction} className="grid gap-2">
@@ -53,7 +55,7 @@ async function Settings() {
               Tokens are read from environment variables, never stored in the database. Put them in{" "}
               <code>.env.local</code> and restart:
             </p>
-            <pre className="mb-3 rounded bg-zinc-50 p-2 text-xs dark:bg-zinc-900">{`JIRA_PAT=...           # Jira personal access token
+            <pre className="mb-3 rounded-lg bg-panel-2 p-3 text-xs">{`JIRA_PAT=...           # Jira personal access token
 CONFLUENCE_PAT=...     # Confluence PAT (falls back to JIRA_PAT)
 GOOGLE_ACCESS_TOKEN=...# optional: private Google Docs notes
 # or, for older Jira without PATs:
@@ -61,7 +63,7 @@ JIRA_USER=...
 JIRA_PASSWORD=...
 # corporate CA bundle, if needed:
 NODE_EXTRA_CA_CERTS=/path/to/ca.pem`}</pre>
-            <p className="mb-2 text-sm">Jira credentials: {jiraAuthHeader() ? <b className="text-emerald-600">found</b> : <b className="text-amber-600">not set</b>}</p>
+            <p className="mb-2 text-sm">Jira credentials: {jiraAuthHeader() ? <b className="text-good-ink">found</b> : <b className="text-warning-ink">not set</b>}</p>
             <form action={testJiraAction}>
               <Button variant="secondary" type="submit" disabled={!cfg.jira.baseUrl || !jiraAuthHeader()}>Test Jira connection</Button>
             </form>

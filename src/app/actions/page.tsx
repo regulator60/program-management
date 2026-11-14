@@ -9,6 +9,8 @@ import { loadModel } from "@/lib/model";
 import { listActionItems, listNotes } from "@/lib/store";
 import { withBase } from "@/lib/paths";
 
+export const metadata = { title: "Action items" };
+
 export default function Page(props: PageProps<"/actions">) {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
@@ -33,6 +35,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
   return (
     <>
       <PageHeader
+        eyebrow="Governance"
         title="Action items"
         subtitle={`Program action items from the Jira intake board (label "${m.cfg.labels.intake}") plus items captured from notes.`}
         actions={
@@ -41,7 +44,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
               {showDone ? "Hide done" : "Show done"}
             </Link>
             {unsynced > 0 && (
-              <a href={withBase("/api/export/action-items")} className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              <a href={withBase("/api/export/action-items")} className="inline-flex h-9 items-center rounded-lg border border-line bg-panel px-3.5 text-sm font-medium shadow-sm hover:bg-panel-2">
                 Export {unsynced} for Jira import (CSV)
               </a>
             )}
@@ -121,7 +124,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
                   </Td>
                   <Td><input form={formId} name="owner" defaultValue={a.owner ?? ""} className={inputCls + " w-32"} /></Td>
                   <Td>
-                    <input form={formId} name="dueDate" type="date" defaultValue={a.dueDate ?? ""} className={inputCls + " w-36" + (late ? " border-red-500 text-red-600" : "")} />
+                    <input form={formId} name="dueDate" type="date" defaultValue={a.dueDate ?? ""} className={inputCls + " w-36" + (late ? " border-critical text-critical-ink" : "")} />
                   </Td>
                   <Td>
                     <input form={formId} name="jiraKey" defaultValue={a.jiraKey ?? ""} placeholder="BIGP-123" className={inputCls + " w-28 font-mono"} />

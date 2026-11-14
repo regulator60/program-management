@@ -11,7 +11,7 @@ export default function Page() {
 function inline(s: string): ReactNode[] {
   return s.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).map((p, i) => {
     if (p.startsWith("**")) return <b key={i}>{p.slice(2, -2)}</b>;
-    if (p.startsWith("`")) return <code key={i} className="rounded bg-zinc-100 px-1 text-xs dark:bg-zinc-800">{p.slice(1, -1)}</code>;
+    if (p.startsWith("`")) return <code key={i} className="rounded bg-panel-2 px-1 text-xs">{p.slice(1, -1)}</code>;
     if (p.startsWith("*") && p.length > 2) return <i key={i}>{p.slice(1, -1)}</i>;
     return p;
   });

@@ -87,7 +87,7 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
                         <Td><StatusPill issue={k} /></Td>
                         <Td>
                           <DateCell date={k.dueDate} late={isLate(k, m.today)} />
-                          {i.dueDate && k.dueDate && k.dueDate > i.dueDate && <span className="ml-1 text-xs text-red-600">after parent</span>}
+                          {i.dueDate && k.dueDate && k.dueDate > i.dueDate && <span className="ml-1 text-xs text-critical-ink">after parent</span>}
                         </Td>
                       </tr>
                     ))}
