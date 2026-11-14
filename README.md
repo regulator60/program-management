@@ -96,7 +96,7 @@ Step-by-step instructions are in [`docs/JIRA_IMPORT.md`](docs/JIRA_IMPORT.md), a
 
 `.github/workflows/pages.yml` builds a **read-only static snapshot on fictional demo data** on every push. Pushes to `main` then deploy it to `https://<owner>.github.io/<repo>/`.
 
-One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**.
+One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**. If it stays on "Deploy from a branch", GitHub's built-in Jekyll build publishes the README and races this workflow on every push.
 
 To build it locally:
 
@@ -104,7 +104,7 @@ To build it locally:
 PAGES_BASE_PATH=/program-management NEXT_PUBLIC_DEMO_MODE=1 npm run build:demo-site   # writes ./out
 ```
 
-GitHub Pages only serves static files, so the real app (sync, edits, imports) can't run there; run it locally. The repo and the Pages site are **public**, so never put real program data in either.
+GitHub Pages only serves static files, so the real app (sync, edits, imports) can't run there; run it locally. The repo and the Pages site are **public**, so never put real program data in either. To run the app with real data, see [`docs/HOSTING.md`](docs/HOSTING.md).
 
 ## Code map
 
