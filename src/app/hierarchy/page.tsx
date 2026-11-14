@@ -7,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { filterTree, flattenTree, isLate, type TreeNode } from "@/lib/hierarchy";
 import { loadModel, parseFilter } from "@/lib/model";
 
+export const metadata = { title: "Plan hierarchy" };
+
 export default function Page(props: PageProps<"/hierarchy">) {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
@@ -15,7 +17,7 @@ export default function Page(props: PageProps<"/hierarchy">) {
   );
 }
 
-const GRID = "grid grid-cols-[minmax(320px,1fr)_120px_120px_80px_80px_110px_110px] items-center gap-2";
+const GRID = "grid grid-cols-[minmax(340px,1fr)_120px_140px_112px_112px_124px_136px] items-center gap-3";
 
 async function Hierarchy({ searchParams }: { searchParams: PageProps<"/hierarchy">["searchParams"] }) {
   await connection();
@@ -38,6 +40,7 @@ async function Hierarchy({ searchParams }: { searchParams: PageProps<"/hierarchy
     <>
       <PageHeader
         title="Plan hierarchy"
+        eyebrow="Plan"
         subtitle="Outcome → Critical path milestone → Interim milestone (Intent) → Interim milestone → Epic → Stories"
       />
       <FilterBar
@@ -63,9 +66,9 @@ async function Hierarchy({ searchParams }: { searchParams: PageProps<"/hierarchy
           Nothing matches. <Link href="/sync" className="text-accent underline">Load data</Link> or clear filters.
         </Empty>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line bg-panel">
-          <div className="min-w-[1000px]">
-            <div className={`${GRID} border-b border-line px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted`}>
+        <div className="overflow-x-auto rounded-xl border border-line bg-panel shadow-card">
+          <div className="min-w-[1180px]">
+            <div className={`${GRID} border-b border-line bg-panel-2 px-4 py-2.5 text-xs font-semibold text-ink-2`}>
               <div>Item</div>
               <div>Sub-track</div>
               <div>Platforms</div>
@@ -81,7 +84,7 @@ async function Hierarchy({ searchParams }: { searchParams: PageProps<"/hierarchy
         </div>
       )}
       {orphans.length > 0 && (
-        <div className="mt-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+        <div className="mt-6 rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm text-warning-ink">
           <div className="mb-2 font-semibold">Not linked into the hierarchy ({orphans.length})</div>
           <p className="mb-2 text-xs text-muted">
             These in-scope milestones/epics have no &ldquo;contains&rdquo; parent, so they don&rsquo;t roll up to an outcome.
@@ -114,7 +117,7 @@ function Node({
   const overrun = !!(n.rollup.latestChildDue && i.dueDate && n.rollup.latestChildDue > i.dueDate);
   const flags = depFlags.get(i.key);
   const row = (
-    <div className={`${GRID} px-3 py-1.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900`}>
+    <div className={`${GRID} px-4 py-2 text-sm hover:bg-panel-2`}>
       <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: n.depth * 18 }}>
         <span className="w-3 text-muted">{n.children.length ? <span className="chev inline-block">▸</span> : ""}</span>
         <LevelTag level={i.level} />
@@ -124,12 +127,12 @@ function Node({
           <Pending show={i.pendingFields.includes("summary")} />
         </span>
         {overrun && (
-          <span title={`Children finish ${fmtDate(n.rollup.latestChildDue)} — after this item's due date`} className="shrink-0 rounded bg-red-100 px-1 text-[10px] font-semibold text-red-700 dark:bg-red-900/50 dark:text-red-200">
+          <span title={`Children finish ${fmtDate(n.rollup.latestChildDue)} — after this item's due date`} className="shrink-0 rounded bg-critical-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-critical-ink">
             OVERRUN
           </span>
         )}
         {flags && (
-          <Link href={`/dependencies?key=${i.key}`} title="Dependency conflicts" className="shrink-0 rounded bg-orange-100 px-1 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/50 dark:text-orange-200">
+          <Link href={`/dependencies?key=${i.key}`} title="Dependency conflicts" className="shrink-0 rounded bg-serious-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-serious-ink">
             DEP×{flags}
           </Link>
         )}

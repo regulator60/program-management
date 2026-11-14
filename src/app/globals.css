@@ -1,22 +1,81 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. Light is the primary theme (executive readouts, projectors,
+ * printing); dark is a selected theme from the same ramps, not an inversion.
+ * Status colors come from the validated reference status palette and always
+ * ship with an icon + label, never color alone.
+ */
 :root {
-  --background: #f7f7f8;
-  --foreground: #18181b;
+  color-scheme: light;
+  --background: #f5f6f8;
+  --foreground: #0f172a; /* primary ink */
+  --ink-2: #475569; /* secondary ink */
+  --muted: #64748b; /* tertiary ink: captions, axes */
   --panel: #ffffff;
-  --line: #e4e4e7;
-  --muted: #71717a;
-  --accent: #2563eb;
+  --panel-2: #f8fafc; /* inset areas, table headers */
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --accent: #1c5cab; /* brand blue (sequential 550) */
+  --accent-soft: #e8f0fb;
+  --sidebar: #0f1b2d;
+  --sidebar-ink: #c7d2e3;
+  --sidebar-active: #1c5cab;
+
+  /* status (fixed) */
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --good-soft: #e7f6e7;
+  --warning-soft: #fef5e1;
+  --serious-soft: #fdeee8;
+  --critical-soft: #fbe9e9;
+  --good-ink: #066006;
+  --warning-ink: #7a5300;
+  --serious-ink: #8a3a17;
+  --critical-ink: #9b2222;
+
+  /* data: ordinal progress ramp (validated) + categorical slot 1 */
+  --progress-done: #1c5cab;
+  --progress-active: #86b6ef;
+  --progress-track: #e2e8f0;
+  --series-1: #2a78d6;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 1px 3px rgb(15 23 42 / 0.06);
+  --shadow-pop: 0 10px 30px rgb(15 23 42 / 0.14), 0 2px 6px rgb(15 23 42 / 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0b0d;
-    --foreground: #ededed;
-    --panel: #141417;
-    --line: #2a2a30;
-    --muted: #a1a1aa;
-    --accent: #60a5fa;
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --background: #0d1117;
+    --foreground: #e8edf4;
+    --ink-2: #b6c2d2;
+    --muted: #8b98aa;
+    --panel: #151b24;
+    --panel-2: #1a222d;
+    --line: #263040;
+    --line-strong: #344155;
+    --accent: #5598e7;
+    --accent-soft: #16263d;
+    --sidebar: #0a0f16;
+    --sidebar-ink: #a9b6c8;
+    --sidebar-active: #1c5cab;
+    --good-soft: #10291a;
+    --warning-soft: #2e2510;
+    --serious-soft: #2f1d15;
+    --critical-soft: #2f1517;
+    --good-ink: #7fd77f;
+    --warning-ink: #f6c968;
+    --serious-ink: #f2ab8c;
+    --critical-ink: #f09a9a;
+    --progress-done: #3987e5;
+    --progress-active: #184f95;
+    --progress-track: #263040;
+    --series-1: #3987e5;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -24,27 +83,91 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-fg: var(--foreground);
+  --color-ink-2: var(--ink-2);
   --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-ink: var(--sidebar-ink);
+  --color-good: var(--good);
+  --color-warning: var(--warning);
+  --color-serious: var(--serious);
+  --color-critical: var(--critical);
+  --color-good-soft: var(--good-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-serious-soft: var(--serious-soft);
+  --color-critical-soft: var(--critical-soft);
+  --color-good-ink: var(--good-ink);
+  --color-warning-ink: var(--warning-ink);
+  --color-serious-ink: var(--serious-ink);
+  --color-critical-ink: var(--critical-ink);
+  --color-progress-done: var(--progress-done);
+  --color-progress-active: var(--progress-active);
+  --color-progress-track: var(--progress-track);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 details > summary::-webkit-details-marker {
   display: none;
 }
 
+/* Hover tooltips for server-rendered charts (no JS). */
+/* .tip needs a positioned parent: add `relative` (or `absolute`) alongside it. */
+.tip > .tip-body {
+  pointer-events: none;
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  opacity: 0;
+  transition: opacity 120ms ease, transform 120ms ease;
+  width: max-content;
+  max-width: 280px;
+  white-space: normal;
+  background: var(--foreground);
+  color: var(--panel);
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 6px 8px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-pop);
+}
+.tip:hover > .tip-body,
+.tip:focus-visible > .tip-body {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 @media print {
   body {
     background: white;
-    color: black;
+  }
+  aside,
+  .no-print {
+    display: none !important;
   }
 }

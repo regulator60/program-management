@@ -90,6 +90,11 @@ try {
     }
   }
 
+  // Search index for the ⌘K palette (fetched from <base>/api/search).
+  const search = await fetch(`${origin}${base}/api/search`);
+  mkdirSync(join(out, "api"), { recursive: true });
+  writeFileSync(join(out, "api", "search"), await search.text());
+
   // 404 page, static assets, and tell Pages not to run Jekyll (it hides _next/).
   const notFound = await fetch(`${origin}${base}/__missing__`);
   writeFileSync(join(out, "404.html"), await notFound.text());

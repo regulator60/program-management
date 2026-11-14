@@ -85,8 +85,8 @@ export type GroupReport = {
   rag: Rag;
   ragReasons: string[];
   milestones: { total: number; done: number; late: number };
-  epics: { total: number; done: number };
-  items: { total: number; done: number; late: number };
+  epics: { total: number; done: number; active: number };
+  items: { total: number; done: number; late: number; active: number };
   deps: { conflict: number; overdue: number; tight: number; unknown: number };
   risks: { tier1: number; tier2: number; tier3: number };
   decisionsOpen: number;
@@ -119,11 +119,16 @@ export function groupReport(m: Model, name: string, f: Filter): GroupReport {
       done: ms.filter((i) => i.statusCategory === "done").length,
       late: ms.filter((i) => isLate(i, m.today)).length,
     },
-    epics: { total: epics.length, done: epics.filter((i) => i.statusCategory === "done").length },
+    epics: {
+      total: epics.length,
+      done: epics.filter((i) => i.statusCategory === "done").length,
+      active: epics.filter((i) => i.statusCategory === "indeterminate").length,
+    },
     items: {
       total: items.length,
       done: items.filter((i) => i.statusCategory === "done").length,
       late: items.filter((i) => isLate(i, m.today)).length,
+      active: items.filter((i) => i.statusCategory === "indeterminate").length,
     },
     deps: { conflict: cnt("conflict"), overdue: cnt("overdue"), tight: cnt("tight"), unknown: cnt("unknown") },
     risks: {

@@ -47,6 +47,11 @@ export function needByDate(s: { level: string; startDate: string | null; dueDate
   return pointInTime ? (s.dueDate ?? s.startDate) : (s.startDate ?? s.dueDate);
 }
 
+/** "Jan 23, 2027" for human-readable reasons. */
+function fmt(iso: string) {
+  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
 function daysBetween(a: string, b: string) {
   return Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 }
@@ -103,16 +108,16 @@ export function analyzeDependencies(
       slipDays = daysBetween(need, have);
       if (slipDays > 0) {
         health = "conflict";
-        reason = `${p.key} due ${have}, ${slipDays}d after ${s.key} needs it (${need})`;
+        reason = `${p.key} is due ${fmt(have)}, ${slipDays} days after ${s.key} needs it (${fmt(need)})`;
       } else if (have < today) {
         health = "overdue";
-        reason = `${p.key} was due ${have} and is not done`;
+        reason = `${p.key} was due ${fmt(have)} and isn't done`;
       } else if (-slipDays < cfg.analysis.bufferDays) {
         health = "tight";
-        reason = `Only ${-slipDays}d buffer before ${s.key} needs it (${need})`;
+        reason = `Only ${-slipDays} days of buffer before ${s.key} needs it (${fmt(need)})`;
       } else {
         health = "ok";
-        reason = `${-slipDays}d buffer`;
+        reason = `${-slipDays} days of buffer`;
       }
     }
 

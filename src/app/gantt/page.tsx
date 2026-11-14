@@ -7,6 +7,8 @@ import { getDb } from "@/lib/db";
 import { filterTree, flattenTree } from "@/lib/hierarchy";
 import { loadModel, parseFilter } from "@/lib/model";
 
+export const metadata = { title: "Timeline" };
+
 export default function Page(props: PageProps<"/gantt">) {
   return (
     <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
@@ -46,8 +48,9 @@ async function GanttPage({ searchParams }: { searchParams: PageProps<"/gantt">["
   return (
     <>
       <PageHeader
-        title="Gantt"
-        subtitle="Diamonds are milestone due dates; bars are start → due. Red outline = past due. Arrows = dependencies (red = date conflict)."
+        title="Timeline"
+        eyebrow="Plan"
+        subtitle="Bars run from start to due date; diamonds are milestone due dates. Green = done, red = past due. Arrows show dependencies, colored by health. Hover any bar for details."
       />
       <FilterBar
         subTracks={m.subTracks}

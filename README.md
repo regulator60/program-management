@@ -17,7 +17,7 @@ Outcome
 
 | Page | What it shows |
 | --- | --- |
-| **Executive overview** | Red/amber/green (RAG) status by sub-track or by platform (`Domain:` labels). Milestone, epic and item progress, dependency health, risks by tier, the next milestone, and the reason for each status. |
+| **Executive overview** | Overall status with a generated summary; KPI tiles; **What needs attention**, a ranked list of late milestones, plans that overrun, dependency conflicts traced to the critical path milestone they threaten, date slips by other tracks, tier 1/2 risks, due decisions and overdue actions; a 120-day milestone roadmap; and status cards by sub-track or platform. Prints cleanly to PDF. |
 | **Plan hierarchy** | The collapsible tree. Each node shows its rolled-up progress. `OVERRUN` means child work finishes after the parent is due. `DEP×n` means the item has dependency conflicts. |
 | **Gantt** | Milestones are diamonds, work is bars. Arrows show dependencies, and linked items from other tracks appear in their own section. |
 | **Dependencies** | Every blocks / depends-on link touching your items, graded *conflict / overdue / tight / no date / ok / done*. It also lists which linked items **changed dates** recently. |
@@ -26,7 +26,7 @@ Outcome
 | **Meeting notes** | Import a Google Doc, attach a downloaded file (.docx/.txt/.md/.html), paste text, or pull a Confluence page. Action items are extracted automatically (owner and due date included), and Jira updates are suggested for you to review and stage. |
 | **Data & Jira sync** | Pull from Jira over REST or from an export file, import Google Sheets, and push staged edits back to Jira. |
 
-Every view can be filtered by **sub-track** and **platform**. The filters are kept in the URL, so you can bookmark or share a view.
+Press **⌘K** (Ctrl+K on Windows) or **/** anywhere to search every issue, milestone, risk and page. Every view can be filtered by **sub-track** and **platform**. The filters are kept in the URL, so you can bookmark or share a view.
 
 ## Run it
 
@@ -112,6 +112,8 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/lib/hierarchy.ts`: builds the tree and roll-ups
 - `src/lib/dependencies.ts`: predecessor/successor analysis
 - `src/lib/model.ts`: loads everything and produces the executive roll-up
+- `src/lib/insights.ts`: ranks what needs attention and writes the summary
+- `src/components/ui.tsx`, `src/app/globals.css`: design system (tokens, badges, tables, cards)
 - `src/lib/store.ts`: SQLite access, staged edits, change history
 - `src/lib/notes.ts`, `src/lib/noteInsights.ts`, `src/lib/documents.ts`: action-item extraction, Jira suggestions, Google Docs / .docx reading
 - `scripts/build-demo-site.mjs`: static snapshot for GitHub Pages
