@@ -55,6 +55,7 @@ async function Settings() {
             </p>
             <pre className="mb-3 rounded bg-zinc-50 p-2 text-xs dark:bg-zinc-900">{`JIRA_PAT=...           # Jira personal access token
 CONFLUENCE_PAT=...     # Confluence PAT (falls back to JIRA_PAT)
+GOOGLE_ACCESS_TOKEN=...# optional: private Google Docs notes
 # or, for older Jira without PATs:
 JIRA_USER=...
 JIRA_PASSWORD=...

@@ -43,3 +43,9 @@ next-env.d.ts
 
 # local database
 /data/*.db*
+
+# meeting-note attachments (may contain confidential notes)
+/data/attachments/
+
+# GitHub Pages demo build output
+/out/

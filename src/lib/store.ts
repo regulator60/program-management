@@ -142,7 +142,7 @@ export type IssueView = Issue & {
   pendingFields: EditableField[];
 };
 
-const FIELD_TO_PROP: Record<EditableField, keyof Issue> = {
+const FIELD_TO_PROP: Record<Exclude<EditableField, "comment">, keyof Issue> = {
   summary: "summary",
   status: "status",
   assignee: "assignee",
@@ -164,6 +164,10 @@ export function listIssues(db: DatabaseSync): IssueView[] {
     const issue = rowToIssue(r) as IssueView;
     issue.pendingFields = [];
     for (const e of byKey.get(issue.key) ?? []) {
+      if (e.field === "comment") {
+        if (!issue.pendingFields.includes("comment")) issue.pendingFields.push("comment");
+        continue;
+      }
       const prop = FIELD_TO_PROP[e.field];
       if (e.field === "labels") {
         issue.labels = parseArr(e.newValue);
@@ -252,6 +256,18 @@ export function stageEdit(
 ) {
   const row = db.prepare("SELECT * FROM issues WHERE key = ?").get(key) as Row | undefined;
   if (!row) throw new Error(`Unknown issue ${key}`);
+  if (field === "comment") {
+    if (!newValue?.trim()) return;
+    // Comments append; skip exact duplicates already staged or pushed.
+    const dup = db
+      .prepare("SELECT 1 FROM pending_edits WHERE key = ? AND field = 'comment' AND new_value = ?")
+      .get(key, newValue);
+    if (dup) return;
+    db.prepare(
+      "INSERT INTO pending_edits (key, field, old_value, new_value, created_at) VALUES (?, 'comment', NULL, ?, ?)",
+    ).run(key, newValue, nowIso());
+    return;
+  }
   const base = rowToIssue(row);
   const prop = FIELD_TO_PROP[field];
   const current =
@@ -280,13 +296,14 @@ export function markEditsPushed(db: DatabaseSync, ids: number[], method: string)
   const at = nowIso();
   const get = db.prepare("SELECT * FROM pending_edits WHERE id = ?");
   const mark = db.prepare("UPDATE pending_edits SET pushed_at = ?, push_method = ? WHERE id = ?");
-  const colFor: Record<EditableField, string> = {
+  const colFor: Record<EditableField, string | null> = {
     summary: "summary",
     status: "status",
     assignee: "assignee",
     startDate: "start_date",
     dueDate: "due_date",
     labels: "labels",
+    comment: null, // comments live in Jira only
   };
   db.exec("BEGIN");
   try {
@@ -294,10 +311,12 @@ export function markEditsPushed(db: DatabaseSync, ids: number[], method: string)
       const e = get.get(id) as Row | undefined;
       if (!e || e.pushed_at) continue;
       const col = colFor[e.field as EditableField];
-      db.prepare(`UPDATE issues SET ${col} = ? WHERE key = ?`).run(
-        (e.new_value as string) ?? null,
-        String(e.key),
-      );
+      if (col) {
+        db.prepare(`UPDATE issues SET ${col} = ? WHERE key = ?`).run(
+          (e.new_value as string) ?? null,
+          String(e.key),
+        );
+      }
       mark.run(at, method, id);
     }
     db.exec("COMMIT");
@@ -309,27 +328,85 @@ export function markEditsPushed(db: DatabaseSync, ids: number[], method: string)
 
 // ---------- Notes & action items ----------
 
+function rowToNote(r: Row): Note {
+  return {
+    id: Number(r.id),
+    title: String(r.title),
+    body: String(r.body),
+    meetingDate: (r.meeting_date as string) ?? null,
+    source: String(r.source),
+    sourceUrl: (r.source_url as string) ?? null,
+    attachmentName: (r.attachment_name as string) ?? null,
+    attachmentPath: (r.attachment_path as string) ?? null,
+    subTrack: (r.sub_track as string) ?? null,
+    createdAt: String(r.created_at),
+    updatedAt: (r.updated_at as string) ?? null,
+  };
+}
+
 export function listNotes(db: DatabaseSync): Note[] {
-  return (db.prepare("SELECT * FROM notes ORDER BY COALESCE(meeting_date, created_at) DESC, id DESC").all() as Row[]).map(
-    (r) => ({
-      id: Number(r.id),
-      title: String(r.title),
-      body: String(r.body),
-      meetingDate: (r.meeting_date as string) ?? null,
-      source: String(r.source),
-      createdAt: String(r.created_at),
-    }),
+  return (
+    db.prepare("SELECT * FROM notes ORDER BY COALESCE(meeting_date, created_at) DESC, id DESC").all() as Row[]
+  ).map(rowToNote);
+}
+
+export function getNote(db: DatabaseSync, id: number): Note | null {
+  const r = db.prepare("SELECT * FROM notes WHERE id = ?").get(id) as Row | undefined;
+  return r ? rowToNote(r) : null;
+}
+
+export function findNoteBySource(db: DatabaseSync, source: string): Note | null {
+  const r = db.prepare("SELECT * FROM notes WHERE source = ? ORDER BY id DESC LIMIT 1").get(source) as Row | undefined;
+  return r ? rowToNote(r) : null;
+}
+
+export type NoteInput = {
+  title: string;
+  body: string;
+  meetingDate?: string | null;
+  source?: string;
+  sourceUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentPath?: string | null;
+  subTrack?: string | null;
+};
+
+export function addNote(db: DatabaseSync, n: NoteInput): number {
+  const res = db
+    .prepare(
+      `INSERT INTO notes (title, body, meeting_date, source, source_url, attachment_name, attachment_path, sub_track, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      n.title,
+      n.body,
+      n.meetingDate ?? null,
+      n.source ?? "manual",
+      n.sourceUrl ?? null,
+      n.attachmentName ?? null,
+      n.attachmentPath ?? null,
+      n.subTrack ?? null,
+      nowIso(),
+    );
+  return Number(res.lastInsertRowid);
+}
+
+export function updateNoteContent(
+  db: DatabaseSync,
+  id: number,
+  n: Pick<NoteInput, "title" | "body" | "meetingDate">,
+) {
+  db.prepare("UPDATE notes SET title = ?, body = ?, meeting_date = COALESCE(?, meeting_date), updated_at = ? WHERE id = ?").run(
+    n.title,
+    n.body,
+    n.meetingDate ?? null,
+    nowIso(),
+    id,
   );
 }
 
-export function addNote(
-  db: DatabaseSync,
-  n: { title: string; body: string; meetingDate?: string | null; source?: string },
-): number {
-  const res = db
-    .prepare("INSERT INTO notes (title, body, meeting_date, source, created_at) VALUES (?, ?, ?, ?, ?)")
-    .run(n.title, n.body, n.meetingDate ?? null, n.source ?? "manual", nowIso());
-  return Number(res.lastInsertRowid);
+export function setNoteAttachment(db: DatabaseSync, id: number, name: string, path: string) {
+  db.prepare("UPDATE notes SET attachment_name = ?, attachment_path = ? WHERE id = ?").run(name, path, id);
 }
 
 export function deleteNote(db: DatabaseSync, id: number) {

@@ -35,6 +35,14 @@ export function buildUpdateCsv(
   if (touched.has("dueDate")) header.push(cfg.csvColumns.dueDate);
   for (let i = 0; i < maxLabels; i++) header.push("Labels");
 
+  // Comments are appended, one "Comment Body" column per comment.
+  const commentsByKey = new Map<string, string[]>();
+  for (const e of edits) {
+    if (e.field === "comment" && e.newValue) commentsByKey.set(e.key, [...(commentsByKey.get(e.key) ?? []), e.newValue]);
+  }
+  const maxComments = Math.max(0, ...[...commentsByKey.values()].map((c) => c.length));
+  for (let i = 0; i < maxComments; i++) header.push("Comment Body");
+
   const rows = keys.map((k) => {
     const i = byKey.get(k)!; // IssueView already has pending edits applied
     const r: string[] = [i.key, i.summary];
@@ -43,6 +51,8 @@ export function buildUpdateCsv(
     if (touched.has("startDate")) r.push(i.startDate ?? "");
     if (touched.has("dueDate")) r.push(i.dueDate ?? "");
     for (let n = 0; n < maxLabels; n++) r.push(i.labels[n] ?? "");
+    const cs = commentsByKey.get(k) ?? [];
+    for (let n = 0; n < maxComments; n++) r.push(cs[n] ?? "");
     return r;
   });
 

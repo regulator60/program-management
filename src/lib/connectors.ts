@@ -1,12 +1,25 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, type AppConfig } from "./config";
 import { csvRecords } from "./csv";
-import { nowIso } from "./db";
+import { nowIso, todayIso } from "./db";
+import { dateFromTitle, documentToText, fetchGoogleDoc, storeAttachment } from "./documents";
 import { toIsoDate } from "./jira/classify";
 import { JiraClient } from "./jira/client";
 import { normalizeIssue } from "./jira/normalize";
-import { confluenceStorageToText, extractActionItems } from "./notes";
-import { addActionItem, addNote, listLinks, logSync, upsertIssues } from "./store";
+import { confluenceStorageToText, extractActionItems, normaliseActionText } from "./notes";
+import {
+  addActionItem,
+  addNote,
+  findNoteBySource,
+  getNote,
+  listActionItems,
+  listLinks,
+  logSync,
+  setNoteAttachment,
+  updateNoteContent,
+  upsertIssues,
+  type NoteInput,
+} from "./store";
 
 // ---------------- Jira ----------------
 
@@ -86,7 +99,9 @@ export async function importConfluencePage(db: DatabaseSync, input: string, cfg:
     const result = importNoteText(db, {
       title: page.title,
       body: confluenceStorageToText(page.body?.storage?.value ?? ""),
+      meetingDate: dateFromTitle(page.title) ?? todayIso(),
       source: `confluence:${id}`,
+      sourceUrl: `${base}/pages/viewpage.action?pageId=${id}`,
     });
     logSync(db, "confluence", true, `Imported "${page.title}" with ${result.actions} action items`, startedAt);
     return result;
@@ -96,16 +111,89 @@ export async function importConfluencePage(db: DatabaseSync, input: string, cfg:
   }
 }
 
-/** Save a note and auto-extract its action items. */
-export function importNoteText(
-  db: DatabaseSync,
-  n: { title: string; body: string; meetingDate?: string | null; source?: string; subTrack?: string | null },
-) {
-  const noteId = addNote(db, n);
+/**
+ * Save a note and auto-extract its action items.
+ *
+ * Notes from a linked source (a Google Doc, a Confluence page) are matched on
+ * that source: re-importing updates the existing note and only adds action
+ * items that weren't there before. That suits running notes docs, where each
+ * meeting adds a section to the same doc.
+ */
+export function importNoteText(db: DatabaseSync, n: NoteInput) {
+  const linked = n.source && !["manual", "upload"].includes(n.source) ? findNoteBySource(db, n.source) : null;
+  let noteId: number;
+  if (linked) {
+    updateNoteContent(db, linked.id, n);
+    noteId = linked.id;
+  } else {
+    noteId = addNote(db, n);
+  }
   const year = n.meetingDate ? Number(n.meetingDate.slice(0, 4)) : new Date().getFullYear();
   const found = extractActionItems(n.body, year);
-  for (const a of found) addActionItem(db, { ...a, noteId, subTrack: n.subTrack ?? null });
-  return { noteId, actions: found.length };
+  const have = new Set(
+    listActionItems(db)
+      .filter((a) => a.noteId === noteId)
+      .map((a) => normaliseActionText(a.text)),
+  );
+  let added = 0;
+  for (const a of found) {
+    if (have.has(normaliseActionText(a.text))) continue;
+    addActionItem(db, { ...a, noteId, subTrack: n.subTrack ?? null });
+    added++;
+  }
+  return { noteId, actions: added, found: found.length, updated: !!linked };
+}
+
+// ---------------- Google Docs & attached files ----------------
+
+export async function importGoogleDoc(db: DatabaseSync, url: string, opts: { subTrack?: string | null } = {}) {
+  const startedAt = nowIso();
+  try {
+    const doc = await fetchGoogleDoc(url);
+    const r = importNoteText(db, {
+      title: doc.title,
+      body: doc.text,
+      meetingDate: dateFromTitle(doc.title) ?? doc.modifiedTime?.slice(0, 10) ?? todayIso(),
+      source: `gdoc:${doc.id}`,
+      sourceUrl: doc.url,
+      subTrack: opts.subTrack ?? null,
+    });
+    logSync(db, "google-docs", true, `${r.updated ? "Refreshed" : "Imported"} "${doc.title}": ${r.actions} new action items`, startedAt);
+    return { ...r, title: doc.title };
+  } catch (e) {
+    logSync(db, "google-docs", false, e instanceof Error ? e.message : String(e), startedAt);
+    throw e;
+  }
+}
+
+/** A downloaded notes file (.docx/.txt/.md/.html). The original is kept next to the database. */
+export function importAttachedNote(
+  db: DatabaseSync,
+  f: { name: string; bytes: Buffer; title?: string; meetingDate?: string | null; subTrack?: string | null },
+) {
+  const body = documentToText(f.name, f.bytes);
+  if (!body.trim()) throw new Error(`No text found in ${f.name}.`);
+  const title = f.title?.trim() || f.name.replace(/\.[^.]+$/, "");
+  const r = importNoteText(db, {
+    title,
+    body,
+    meetingDate: f.meetingDate || dateFromTitle(title) || todayIso(),
+    source: "upload",
+    attachmentName: f.name,
+    subTrack: f.subTrack ?? null,
+  });
+  setNoteAttachment(db, r.noteId, f.name, storeAttachment(r.noteId, f.name, f.bytes));
+  logSync(db, "notes-upload", true, `Attached "${f.name}": ${r.actions} action items`, nowIso());
+  return r;
+}
+
+/** Re-pull a note from its Google Doc or Confluence page. */
+export async function refreshNote(db: DatabaseSync, id: number) {
+  const note = getNote(db, id);
+  if (!note) throw new Error("Note not found.");
+  if (note.source.startsWith("gdoc:")) return importGoogleDoc(db, note.sourceUrl ?? note.source.slice(5), { subTrack: note.subTrack });
+  if (note.source.startsWith("confluence:")) return importConfluencePage(db, note.source.slice(11));
+  throw new Error("This note wasn't imported from a linked source, so there's nothing to refresh.");
 }
 
 // ---------------- Google Sheets ----------------

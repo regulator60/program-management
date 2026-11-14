@@ -97,6 +97,10 @@ export class JiraClient {
     await this.request("PUT", `/rest/api/2/issue/${encodeURIComponent(key)}`, { fields });
   }
 
+  async addComment(key: string, body: string) {
+    await this.request("POST", `/rest/api/2/issue/${encodeURIComponent(key)}/comment`, { body });
+  }
+
   async transitionTo(key: string, statusName: string) {
     const { transitions } = await this.request<{
       transitions: { id: string; name: string; to: { name: string } }[];
@@ -119,7 +123,8 @@ export class JiraClient {
 export function editsToRestPayload(edits: PendingEdit[], cfg: AppConfig) {
   const fields: Record<string, unknown> = {};
   let status: string | null = null;
-  const map: Record<Exclude<EditableField, "status">, (v: string | null) => [string, unknown]> = {
+  const comments: string[] = [];
+  const map: Record<Exclude<EditableField, "status" | "comment">, (v: string | null) => [string, unknown]> = {
     summary: (v) => ["summary", v ?? ""],
     dueDate: (v) => [cfg.fields.dueDate || "duedate", v],
     startDate: (v) => [cfg.fields.startDate, v],
@@ -129,10 +134,12 @@ export function editsToRestPayload(edits: PendingEdit[], cfg: AppConfig) {
   };
   for (const e of edits) {
     if (e.field === "status") status = e.newValue;
-    else {
+    else if (e.field === "comment") {
+      if (e.newValue) comments.push(e.newValue);
+    } else {
       const [k, v] = map[e.field](e.newValue);
       fields[k] = v;
     }
   }
-  return { fields, status };
+  return { fields, status, comments };
 }

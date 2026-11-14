@@ -17,6 +17,7 @@ import { missingLinkedKeys } from "@/lib/connectors";
 import { getDb } from "@/lib/db";
 import { jiraAuthHeader } from "@/lib/jira/client";
 import { listPendingEdits, recentSyncs } from "@/lib/store";
+import { withBase } from "@/lib/paths";
 
 export default function Page() {
   return (
@@ -94,7 +95,7 @@ async function Sync() {
                     <li>When Jira says the import succeeded, click &ldquo;Mark as imported&rdquo;, then sync to confirm.</li>
                   </ol>
                   <div className="flex flex-wrap gap-2">
-                    <a href="/api/export/updates" className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white">Download update CSV</a>
+                    <a href={withBase("/api/export/updates")} className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white">Download update CSV</a>
                     <form action={markExportedAction}>
                       <input type="hidden" name="ids" value={pending.map((e) => e.id).join(",")} />
                       <Button variant="secondary" type="submit">Mark as imported</Button>

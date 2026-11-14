@@ -1,6 +1,7 @@
 import type { Dependency } from "@/lib/dependencies";
 import type { IssueView } from "@/lib/store";
 import { LEVEL_SHORT, type Level } from "@/lib/types";
+import { withBase } from "@/lib/paths";
 
 export type GanttRow = {
   issue: IssueView;
@@ -142,7 +143,7 @@ export function Gantt({
           const tip = `${it.key} · ${it.summary}\n${it.startDate ?? "?"} → ${it.dueDate ?? "?"} · ${it.status}${it.pendingFields.length ? "\n(pending local edits)" : ""}`;
           return (
             <g key={it.key}>
-              <a href={`/items/${encodeURIComponent(it.key)}`}>
+              <a href={withBase(`/items/${encodeURIComponent(it.key)}`)}>
                 <title>{tip}</title>
                 <text x={8 + r.depth * 14} y={cy + 4} fill={it.inScope ? "var(--foreground)" : "var(--muted)"}>
                   <tspan fontFamily="var(--font-geist-mono)" fontSize={9} fill={color} fontWeight={700}>

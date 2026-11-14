@@ -1,0 +1,50 @@
+name: Demo site (GitHub Pages)
+
+# Builds a static, read-only snapshot of the app on fictional demo data.
+# Every push builds it (as a check); pushes to main deploy it to Pages.
+# Real Jira / meeting-note data never goes here: the site is public.
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PAGES_BASE_PATH: /${{ github.event.repository.name }}
+      NEXT_PUBLIC_DEMO_MODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: node scripts/build-demo-site.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

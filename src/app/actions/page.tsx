@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import { isLate } from "@/lib/hierarchy";
 import { loadModel } from "@/lib/model";
 import { listActionItems, listNotes } from "@/lib/store";
+import { withBase } from "@/lib/paths";
 
 export default function Page(props: PageProps<"/actions">) {
   return (
@@ -40,7 +41,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
               {showDone ? "Hide done" : "Show done"}
             </Link>
             {unsynced > 0 && (
-              <a href="/api/export/action-items" className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
+              <a href={withBase("/api/export/action-items")} className="rounded-md border border-line px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
                 Export {unsynced} for Jira import (CSV)
               </a>
             )}

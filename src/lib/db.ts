@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { seedDemo } from "./seed";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
@@ -99,11 +100,42 @@ CREATE TABLE IF NOT EXISTS sync_log (
 );
 `;
 
-export function openDb(path = process.env.DATABASE_PATH ?? "data/app.db") {
+/** Columns added after v1. Applied idempotently to existing databases. */
+const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
+  { table: "notes", column: "source_url", ddl: "ALTER TABLE notes ADD COLUMN source_url TEXT" },
+  { table: "notes", column: "attachment_name", ddl: "ALTER TABLE notes ADD COLUMN attachment_name TEXT" },
+  { table: "notes", column: "attachment_path", ddl: "ALTER TABLE notes ADD COLUMN attachment_path TEXT" },
+  { table: "notes", column: "sub_track", ddl: "ALTER TABLE notes ADD COLUMN sub_track TEXT" },
+  { table: "notes", column: "updated_at", ddl: "ALTER TABLE notes ADD COLUMN updated_at TEXT" },
+];
+
+function migrate(db: DatabaseSync) {
+  for (const m of MIGRATIONS) {
+    const cols = db.prepare(`PRAGMA table_info(${m.table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === m.column)) db.exec(m.ddl);
+  }
+}
+
+export const DEFAULT_DB_PATH = "data/app.db";
+
+export function dbPath() {
+  return process.env.DATABASE_PATH || DEFAULT_DB_PATH;
+}
+
+/**
+ * Original meeting-note files (Google Docs exports, .docx, etc.) live next to
+ * the database, never in git: this repository is public.
+ */
+export function attachmentsDir() {
+  return join(dirname(dbPath()), "attachments");
+}
+
+export function openDb(path = dbPath()) {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
@@ -111,7 +143,14 @@ let shared: DatabaseSync | null = null;
 
 /** Process-wide connection for server components / actions. */
 export function getDb(): DatabaseSync {
-  if (!shared) shared = openDb();
+  if (!shared) {
+    shared = openDb();
+    // The public GitHub Pages demo runs on fictional data only.
+    if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
+      const n = (shared.prepare("SELECT COUNT(*) AS n FROM issues").get() as { n: number }).n;
+      if (n === 0) seedDemo(shared);
+    }
+  }
   return shared;
 }
 

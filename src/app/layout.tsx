@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { Flash, Nav } from "@/components/client";
+import { DEMO_MODE } from "@/lib/paths";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -39,6 +40,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Nav />
             </Suspense>
           </details>
+          {DEMO_MODE && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              <b>Read-only demo</b> with fictional data. A static snapshot, so filters, edits, imports and sync are
+              disabled. Run the app locally to use it for real.
+            </div>
+          )}
           <Suspense>
             <Flash />
           </Suspense>

@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { DEFAULT_CONFIG, getConfig, saveConfig, type AppConfig } from "@/lib/config";
 import {
   fetchSheetCsv,
+  importAttachedNote,
   importConfluencePage,
+  importGoogleDoc,
+  refreshNote,
   importNoteText,
   importSheetRows,
   syncJira,
@@ -38,9 +41,11 @@ const str = (fd: FormData, k: string) => {
   return typeof v === "string" ? v.trim() : "";
 };
 
-function done(path: string, msg: string, ok = true): never {
+function done(target: string, msg: string, ok = true): never {
   revalidatePath("/", "layout");
-  redirect(`${path}${path.includes("?") ? "&" : "?"}${ok ? "msg" : "err"}=${encodeURIComponent(msg)}`);
+  const [path, hash] = target.split("#");
+  const q = `${ok ? "msg" : "err"}=${encodeURIComponent(msg)}`;
+  redirect(`${path}${path.includes("?") ? "&" : "?"}${q}${hash ? `#${hash}` : ""}`);
 }
 
 async function attempt(path: string, fn: () => Promise<string> | string): Promise<never> {
@@ -157,9 +162,10 @@ export async function pushViaRestAction() {
     const errors: string[] = [];
     for (const [key, list] of byKey) {
       try {
-        const { fields, status } = editsToRestPayload(list, cfg);
+        const { fields, status, comments } = editsToRestPayload(list, cfg);
         if (Object.keys(fields).length) await client.updateFields(key, fields);
         if (status) await client.transitionTo(key, status);
+        for (const c of comments) await client.addComment(key, c);
         ok.push(...list.map((e) => e.id));
       } catch (e) {
         errors.push(`${key}: ${e instanceof Error ? e.message : e}`);
@@ -186,6 +192,61 @@ export async function addNoteAction(fd: FormData) {
       subTrack: str(fd, "subTrack") || null,
     });
     return `Note saved. Found ${r.actions} action item(s).`;
+  });
+}
+
+export async function importGoogleDocAction(fd: FormData) {
+  await attempt("/notes", async () => {
+    const url = str(fd, "url");
+    if (!url) throw new Error("Paste a Google Docs link.");
+    const r = await importGoogleDoc(getDb(), url, { subTrack: str(fd, "subTrack") || null });
+    return `${r.updated ? "Refreshed" : "Imported"} "${r.title}". ${r.actions} new action item(s). Review suggested Jira updates below.`;
+  });
+}
+
+export async function attachNoteAction(fd: FormData) {
+  await attempt("/notes", async () => {
+    const file = fd.get("file");
+    if (!(file instanceof File) || file.size === 0) throw new Error("Choose a notes file to attach.");
+    if (file.size > 20 * 1024 * 1024) throw new Error("That file is over 20 MB.");
+    const r = importAttachedNote(getDb(), {
+      name: file.name,
+      bytes: Buffer.from(await file.arrayBuffer()),
+      title: str(fd, "title"),
+      meetingDate: str(fd, "meetingDate") || null,
+      subTrack: str(fd, "subTrack") || null,
+    });
+    return `Attached ${file.name}. Found ${r.actions} action item(s). Review suggested Jira updates below.`;
+  });
+}
+
+export async function refreshNoteAction(fd: FormData) {
+  await attempt("/notes", async () => {
+    const r = await refreshNote(getDb(), Number(str(fd, "id")));
+    return `Refreshed. ${r.actions} new action item(s).`;
+  });
+}
+
+/**
+ * Stage the Jira suggestions the user ticked on a note. Each suggestion posts
+ * k-<i>, f-<i>, v-<i> (value may have been edited) and the checkbox "pick"=<i>.
+ */
+export async function stageNoteSuggestionsAction(fd: FormData) {
+  await attempt(`/notes#note-${str(fd, "noteId")}`, () => {
+    const db = getDb();
+    const picks = fd.getAll("pick").map(String);
+    if (!picks.length) throw new Error("Tick at least one suggestion.");
+    const allowed = new Set<EditableField>(["dueDate", "startDate", "status", "comment"]);
+    let n = 0;
+    for (const i of picks) {
+      const key = str(fd, `k-${i}`);
+      const field = str(fd, `f-${i}`) as EditableField;
+      const value = str(fd, `v-${i}`);
+      if (!key || !allowed.has(field) || !value) continue;
+      stageEdit(db, key, field, value);
+      n++;
+    }
+    return `Staged ${n} Jira update(s). Push them from Data & Jira sync.`;
   });
 }
 

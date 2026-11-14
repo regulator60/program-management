@@ -163,6 +163,8 @@ export function seedDemo(db: DatabaseSync) {
       "",
       "Login & Auth",
       "- Token refresh slipped ~1 week; Dev picking up revocation edge cases",
+      "- BIGP-31 MFA UI milestone moved to " + d(33) + " to absorb the token slip",
+      "- BIGP-112 load testing kicked off early, now in progress",
       "- AI: Priya to confirm shared token format with View Account by " + d(7),
       "- [ ] @marcus share MFA vendor SDK release notes due " + d(4),
       "",
@@ -174,6 +176,10 @@ export function seedDemo(db: DatabaseSync) {
       "- Fraud scoring API still has no date from Platform",
       "- TODO: escalate PLAT-7 date at program sync",
       "- [x] Payee migration volume risk closed",
+      "",
+      "Suggested next steps",
+      "- Sam Patel will ask Platform for a committed PLAT-7 date",
+      "- Track lead to raise Dashboard GA risk at program sync",
     ].join("\n"),
   });
 }

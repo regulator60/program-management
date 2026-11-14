@@ -122,8 +122,11 @@ export type EditableField =
   | "assignee"
   | "startDate"
   | "dueDate"
-  | "labels";
+  | "labels"
+  /** Append-only: each staged comment is added to the issue when pushed. */
+  | "comment";
 
+/** Fields edited through the item form (comments are added separately). */
 export const EDITABLE_FIELDS: EditableField[] = [
   "summary",
   "status",
@@ -138,8 +141,13 @@ export type Note = {
   title: string;
   body: string;
   meetingDate: string | null;
-  source: string; // "manual" | "confluence:<id>"
+  source: string; // "manual" | "upload" | "gdoc:<id>" | "confluence:<id>"
+  sourceUrl: string | null; // Google Doc / Confluence link, used for refresh
+  attachmentName: string | null; // original uploaded file name
+  attachmentPath: string | null; // where the original is stored on disk
+  subTrack: string | null;
   createdAt: string;
+  updatedAt: string | null;
 };
 
 export type ActionItem = {

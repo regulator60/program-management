@@ -23,6 +23,7 @@ Use this when Jira Server is unreliable with REST writes. It goes through Jira's
    - `Labels` → **Labels**. Each `Labels` column is one label. Labels you include *replace* the issue's labels.
    - `Status` → **Status**, but only if your workflow lets the importer set status. Many workflows don't, so push status changes with REST or change them by hand.
    - `Assignee` → **Assignee**. Use Jira usernames, not display names.
+   - `Comment Body` → **Comment Body**. Comments staged from meeting notes are added to the issue. Each `Comment Body` column is one comment. Check in the validation step that comments are added to existing issues on your Jira version; if they aren't, push comments with REST instead.
 5. Click **Validate**. Check that it says *updating* N issues, not *creating* them. If it says creating, your Jira version doesn't update by key; stop there and use Option B or Bulk Change.
 6. Run the import. Save the importer configuration file it offers, so the mapping is one click next time.
 7. Back in this app, click **Mark as imported**, then **Sync now** (or re-import an export). Jira's values become the local values.
@@ -33,6 +34,7 @@ Click **Push via REST**. The app sends one issue at a time, with a pause between
 
 - `PUT /rest/api/2/issue/{key}` for summary, dates, labels and assignee
 - `GET` then `POST /rest/api/2/issue/{key}/transitions` for status. This only works if there is a transition from the current status to the one you entered.
+- `POST /rest/api/2/issue/{key}/comment` for each staged comment
 
 An issue that fails stays pending, and the error appears on the sync page.
 
