@@ -32,6 +32,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Suspense>
             <Nav />
           </Suspense>
+          {process.env.NEXT_PUBLIC_BUILD_SHA && (
+            <div className="mt-auto px-3 pb-1 font-mono text-[10px] text-muted" title="Commit this build was made from">
+              build {process.env.NEXT_PUBLIC_BUILD_SHA}
+            </div>
+          )}
         </aside>
         <main className="min-w-0 flex-1 p-4 md:p-8">
           <details className="mb-4 md:hidden print:hidden">

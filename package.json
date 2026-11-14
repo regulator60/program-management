@@ -9,7 +9,11 @@
     "lint": "eslint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:demo-site": "next build && node scripts/build-demo-site.mjs"
+    "build:demo-site": "next build && node scripts/build-demo-site.mjs",
+    "desktop": "node scripts/desktop-runner.mjs run",
+    "desktop:install": "node scripts/desktop-runner.mjs install",
+    "desktop:uninstall": "node scripts/desktop-runner.mjs uninstall",
+    "desktop:status": "node scripts/desktop-runner.mjs status"
   },
   "dependencies": {
     "next": "16.4.6",

@@ -49,3 +49,6 @@ next-env.d.ts
 
 # GitHub Pages demo build output
 /out/
+
+# desktop runner: per-commit builds, logs, state
+/.releases/
