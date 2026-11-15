@@ -169,6 +169,26 @@ export type ActionItem = {
   createdAt: string;
 };
 
+export type UpdateProgress = "moving" | "stalled" | "blocked" | "resolved";
+
+export const PROGRESS_LABEL: Record<UpdateProgress, string> = {
+  moving: "Moving",
+  stalled: "Stalled",
+  blocked: "Blocked",
+  resolved: "Resolved",
+};
+
+/** A status update on a Jira item, usually captured during an S0 call. */
+export type ItemUpdate = {
+  id: number;
+  key: string;
+  body: string;
+  progress: UpdateProgress | null;
+  scope: string | null;
+  sentToJira: boolean;
+  createdAt: string;
+};
+
 /** A sub-track or a platform: the unit that owns work and reports in S0 calls. */
 export type Scope = { kind: "subtrack" | "platform"; name: string };
 

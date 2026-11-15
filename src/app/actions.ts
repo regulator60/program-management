@@ -20,6 +20,9 @@ import { editsToRestPayload, JiraClient } from "@/lib/jira/client";
 import { importJiraFile } from "@/lib/jira/fileImport";
 import { seedDemo } from "@/lib/seed";
 import {
+  addItemUpdate,
+  deleteItemUpdate,
+  getIssue,
   addActionItem,
   ensureAutoAssignments,
   listAssignments,
@@ -36,7 +39,7 @@ import {
   updateActionItem,
   upsertIssues,
 } from "@/lib/store";
-import { EDITABLE_FIELDS, parseScope, type EditableField, type Scope } from "@/lib/types";
+import { EDITABLE_FIELDS, PROGRESS_LABEL, parseScope, type EditableField, type Scope, type UpdateProgress } from "@/lib/types";
 
 // NOTE: this app is meant to run locally (localhost) for a single user, so
 // server actions don't authenticate. Add auth before hosting it anywhere shared.
@@ -293,6 +296,40 @@ export async function addActionItemAction(fd: FormData) {
   });
 }
 
+// ---------- Item updates (S0 notes) ----------
+
+export async function addItemUpdateAction(fd: FormData) {
+  const back = str(fd, "back") || "/s0";
+  const key = str(fd, "key");
+  await attempt(back, () => {
+    const db = getDb();
+    const body = str(fd, "body");
+    const progress = str(fd, "progress") as UpdateProgress | "";
+    if (!body && !progress) throw new Error("Write an update or pick whether it's moving.");
+    if (!getIssue(db, key)) throw new Error(`Unknown issue ${key}.`);
+    const toJira = fd.get("toJira") === "on";
+    const label = progress ? PROGRESS_LABEL[progress] : "";
+    addItemUpdate(db, { key, body: body || label, progress: progress || null, scope: str(fd, "scope") || null, sentToJira: toJira });
+    if (toJira) {
+      const where = parseScope(str(fd, "scope"));
+      stageEdit(
+        db,
+        key,
+        "comment",
+        `S0 update${where ? ` (${where.name})` : ""}, ${new Date().toISOString().slice(0, 10)}${label ? ` [${label}]` : ""}: ${body || label}`,
+      );
+    }
+    return `Update saved for ${key}${toJira ? " and staged as a Jira comment" : ""}.`;
+  });
+}
+
+export async function deleteItemUpdateAction(fd: FormData) {
+  await attempt(str(fd, "back") || "/s0", () => {
+    deleteItemUpdate(getDb(), Number(str(fd, "id")));
+    return "Update removed.";
+  });
+}
+
 // ---------- Program action items ----------
 
 const scopesFrom = (fd: FormData) =>
@@ -380,8 +417,47 @@ export async function deleteActionItemAction(fd: FormData) {
 
 // ---------- Settings ----------
 
+/**
+ * Save one Settings section. Inputs are named `cfg.<type>.<path>`:
+ * text → string, num → number, list → comma/newline separated array.
+ */
+export async function saveSettingsSectionAction(fd: FormData) {
+  const section = str(fd, "section");
+  await attempt(`/settings?section=${encodeURIComponent(section)}`, () => {
+    const db = getDb();
+    const next = structuredClone(getConfig(db)) as unknown as Record<string, unknown>;
+    let n = 0;
+    for (const [name, raw] of fd.entries()) {
+      const m = name.match(/^cfg\.(text|num|list)\.(.+)$/);
+      if (!m || typeof raw !== "string") continue;
+      const [, type, path] = m;
+      let value: unknown = raw.trim();
+      if (type === "num") {
+        value = Number(raw);
+        if (!Number.isFinite(value as number) || (value as number) < 0) throw new Error(`"${path}" must be a positive number.`);
+      } else if (type === "list") {
+        value = raw.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+      }
+      if (path === "labels.tierPattern") {
+        try {
+          new RegExp(value as string);
+        } catch {
+          throw new Error("Tier pattern isn't a valid regular expression.");
+        }
+      }
+      const keys = path.split(".");
+      let obj = next;
+      for (const k of keys.slice(0, -1)) obj = (obj[k] ??= {}) as Record<string, unknown>;
+      obj[keys[keys.length - 1]] = value;
+      n++;
+    }
+    saveConfig(db, next as unknown as AppConfig);
+    return `Saved ${n} setting${n === 1 ? "" : "s"}. Re-sync or re-import Jira data to re-classify issues.`;
+  });
+}
+
 export async function saveSettingsAction(fd: FormData) {
-  await attempt("/settings", () => {
+  await attempt("/settings?section=advanced", () => {
     let parsed: AppConfig;
     try {
       parsed = JSON.parse(str(fd, "config"));
@@ -394,14 +470,14 @@ export async function saveSettingsAction(fd: FormData) {
 }
 
 export async function resetSettingsAction() {
-  await attempt("/settings", () => {
+  await attempt("/settings?section=advanced", () => {
     saveConfig(getDb(), DEFAULT_CONFIG);
     return "Settings reset to defaults.";
   });
 }
 
 export async function testJiraAction() {
-  await attempt("/settings", async () => {
+  await attempt("/settings?section=jira", async () => {
     const me = await JiraClient.fromConfig(getConfig(getDb())).myself();
     return `Connected to Jira as ${me.displayName} (${me.name}).`;
   });

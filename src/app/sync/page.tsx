@@ -11,6 +11,7 @@ import {
   seedDemoAction,
   syncJiraAction,
 } from "@/app/actions";
+import { Select } from "@/components/select";
 import { Button, Card, KeyLink, PageHeader, Table, Td, Th, inputCls } from "@/components/ui";
 import { getConfig } from "@/lib/config";
 import { missingLinkedKeys } from "@/lib/connectors";
@@ -148,10 +149,15 @@ async function Sync() {
             <input name="url" placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0" className={inputCls} />
             <div className="text-center text-xs text-muted">or</div>
             <input type="file" name="file" accept=".csv" className={inputCls} />
-            <select name="target" className={inputCls} defaultValue="action_items">
-              <option value="action_items">Rows are action items (Action, Owner, Due, Status, Sub-track, Jira)</option>
-              <option value="subtrack_map">Rows map Jira keys to sub-track / platform (Key, Sub-track, Platform)</option>
-            </select>
+            <Select
+              name="target"
+              aria-label="What the rows are"
+              defaultValue="action_items"
+              options={[
+                { value: "action_items", label: "Rows are action items (Action, Owner, Due, Status, Sub-track, Jira)" },
+                { value: "subtrack_map", label: "Rows map Jira keys to sub-track / platform (Key, Sub-track, Platform)" },
+              ]}
+            />
             <Button type="submit">Import sheet</Button>
           </form>
           <p className="mt-2 text-xs text-muted">

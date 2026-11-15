@@ -6,7 +6,8 @@ import { Button, Card, DateCell, Empty, HealthBadge, KeyLink, LevelTag, PageHead
 import { getDb } from "@/lib/db";
 import { childMap, isLate } from "@/lib/hierarchy";
 import { loadModel } from "@/lib/model";
-import { listChanges, listPendingEdits } from "@/lib/store";
+import { listChanges, listItemUpdates, listPendingEdits } from "@/lib/store";
+import { LastUpdate, UpdateComposer } from "@/components/updates";
 import { LEVEL_LABEL } from "@/lib/types";
 
 export default function Page(props: PageProps<"/items/[key]">) {
@@ -42,6 +43,7 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
       !(children.get(l.fromKey)?.has(l.toKey)),
   );
   const history = listChanges(db, { key });
+  const updates = listItemUpdates(db, key);
   const pending = listPendingEdits(db, { unpushedOnly: true }).filter((e) => e.key === key);
   const jiraUrl = m.cfg.jira.baseUrl ? `${m.cfg.jira.baseUrl.replace(/\/+$/, "")}/browse/${key}` : null;
 
@@ -127,6 +129,21 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
                 })}
               </div>
             )}
+          </Card>
+
+          <Card title="Updates" subtitle="Status notes captured in S0 calls or here, newest first">
+            {updates.length === 0 ? (
+              <p className="text-sm text-muted">No updates yet.</p>
+            ) : (
+              <ul className="grid gap-2">
+                {updates.map((u) => (
+                  <li key={u.id}>
+                    <LastUpdate u={u} today={m.today} className="mt-0" />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <UpdateComposer issueKey={key} back={`/items/${encodeURIComponent(key)}`} defaultOpen={updates.length === 0} />
           </Card>
 
           <Card title="Change history (detected between syncs)">

@@ -18,13 +18,14 @@ Outcome
 | Page | What it shows |
 | --- | --- |
 | **Executive overview** | Overall status with a generated summary; KPI tiles; **What needs attention**, a ranked list of late milestones, plans that overrun, dependency conflicts traced to the critical path milestone they threaten, date slips by other tracks, tier 1/2 risks, due decisions and overdue actions; a 120-day milestone roadmap; and status cards by sub-track or platform. Prints cleanly to PDF. |
-| **S0 weekly review** | One page per sub-track and per platform for the weekly call with the people doing the work and the track leads. It has a generated **agenda** (wins; issues to discuss, each with a question to put to the team; program asks; overdue actions; dates that moved), what changed this week, upcoming milestones, dependencies (what we wait on, who waits on us), risks, decisions, that team's program asks with one-click "done", its action items, and quick capture of new actions. Printable. |
+| **S0 weekly review** | One page per sub-track and per platform for the weekly call with the people doing the work and the track leads. It has a generated **agenda** (wins; issues to discuss, each with a question to put to the team; **risks & decisions to review**; program asks; overdue actions; dates that moved), what changed this week, upcoming milestones, dependencies (what we wait on, who waits on us), risks, decisions, that team's program asks with one-click "done", its action items, and quick capture of new actions. A risk or decision is raised for review when there's no update in N days (Settings → Analysis), it was last marked blocked or stalled, its date is past or within 14 days, or it has no owner. Capture an **update** (Moving / Stalled / Blocked / Resolved plus a note) right on the page, optionally staged as a Jira comment. Updates also show on each item's page. Printable. |
 | **Plan hierarchy** | The collapsible tree. Each node shows its rolled-up progress. `OVERRUN` means child work finishes after the parent is due. `DEP×n` means the item has dependency conflicts. |
 | **Gantt** | Milestones are diamonds, work is bars. Arrows show dependencies, and linked items from other tracks appear in their own section. |
 | **Dependencies** | Every blocks / depends-on link touching your items, graded *conflict / overdue / tight / no date / ok / done*. It also lists which linked items **changed dates** recently. |
 | **Risks & decisions** | Grouped by tier. Tier 3 is your track only; tiers 1 and 2 span multiple tracks. |
 | **Action items** | Two kinds. **Program action items** are asks from the program, from the Jira intake board (the `intake` label) or added in the app. Each is assigned to sub-tracks and/or platforms, and every team marks its own part done. Intake items labelled `Domain:` assign themselves to those platforms. When all teams finish, one click stages the Jira item to Done with a summary comment. **Team action items** are smaller follow-ups from calls and notes. Each belongs to a sub-track and/or platform and links to the milestones, dependencies and risks it moves forward. Jira keys in the text are linked automatically, and actions under a team heading in notes are assigned to that team. |
 | **Meeting notes** | Import a Google Doc, attach a downloaded file (.docx/.txt/.md/.html), paste text, or pull a Confluence page. Action items are extracted automatically (owner and due date included), and Jira updates are suggested for you to review and stage. |
+| **Settings** | Sections for General, Jira connection (with a connection test), Confluence, Issue types, Fields, Labels & links, Analysis thresholds, Credentials (which environment variables are set) and Advanced (raw JSON, reset). |
 | **Data & Jira sync** | Pull from Jira over REST or from an export file, import Google Sheets, and push staged edits back to Jira. |
 
 Press **⌘K** (Ctrl+K on Windows) or **/** anywhere to search every issue, milestone, risk and page. Every view can be filtered by **sub-track** and **platform**. The filters are kept in the URL, so you can bookmark or share a view.
@@ -114,7 +115,8 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/lib/dependencies.ts`: predecessor/successor analysis
 - `src/lib/model.ts`: loads everything and produces the executive roll-up
 - `src/lib/insights.ts`: ranks what needs attention and writes the summary
-- `src/components/ui.tsx`, `src/app/globals.css`: design system (tokens, badges, tables, cards)
+- `src/components/ui.tsx`, `src/components/select.tsx`, `src/app/globals.css`: design system (tokens, badges, tables, cards; Radix UI dropdowns)
+- `src/lib/s0.ts`: S0 agenda and risk/decision review topics
 - `src/lib/store.ts`: SQLite access, staged edits, change history
 - `src/lib/notes.ts`, `src/lib/noteInsights.ts`, `src/lib/documents.ts`: action-item extraction, Jira suggestions, Google Docs / .docx reading
 - `scripts/build-demo-site.mjs`: static snapshot for GitHub Pages
