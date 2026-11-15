@@ -245,7 +245,7 @@ async function Overview({ searchParams }: { searchParams: PageProps<"/">["search
 
       <div className="mb-3 flex items-end justify-between">
         <h2 className="text-lg font-semibold tracking-tight text-fg">Status by {by === "platform" ? "platform" : "sub-track"}</h2>
-        <span className="text-xs text-muted">Click a card to open its plan</span>
+        <span className="text-xs text-muted">Click a card to open that team&rsquo;s S0 weekly review</span>
       </div>
       {groups.length === 0 ? (
         <Empty>No {by === "platform" ? "platform (Domain:) labels" : "sub-tracks"} found. Check label settings.</Empty>
@@ -371,7 +371,7 @@ function InsightsCard({ insights }: { insights: Insight[] }) {
 }
 
 function GroupCard({ g, by, today }: { g: GroupReport; by: string; today: string }) {
-  const href = `/hierarchy?${by === "platform" ? "platform" : "subtrack"}=${encodeURIComponent(g.name)}`;
+  const href = `/s0/${by === "platform" ? "platform" : "subtrack"}/${encodeURIComponent(g.name)}`;
   const issues = g.deps.conflict + g.deps.overdue;
   return (
     <Link href={href} className="group flex flex-col rounded-xl border border-line bg-panel p-5 shadow-card transition hover:border-line-strong hover:shadow-pop">

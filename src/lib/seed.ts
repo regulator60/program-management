@@ -3,6 +3,7 @@ import { getConfig } from "./config";
 import { nowIso } from "./db";
 import { normalizeIssue, type RawIssueLink, type RawJiraIssue } from "./jira/normalize";
 import { importNoteText } from "./connectors";
+import { addActionItem, addAssignment, ensureAutoAssignments, listAssignments, setAssignments, updateAssignment } from "./store";
 import { clearAllData, upsertIssues } from "./store";
 
 /**
@@ -96,6 +97,8 @@ export function seedDemo(db: DatabaseSync) {
     { key: "BIGP-300", type: "Task", summary: "Send updated pilot timeline to program office", status: "To Do", cat: "new", due: 3, labels: ["intake"], assignee: "Track Lead" },
     { key: "BIGP-301", type: "Task", summary: "Confirm Android device budget with finance", status: "In Progress", cat: "indeterminate", due: -1, labels: ["intake", ST.auth], assignee: "Ana Gomez" },
     { key: "BIGP-302", type: "Task", summary: "Book regulatory pre-read for login flow", status: "Done", cat: "done", due: -4, labels: ["intake"], assignee: "Program Office" },
+    { key: "BIGP-303", type: "Task", summary: "Confirm accessibility test plan for each platform", status: "In Progress", cat: "indeterminate", due: 12, labels: ["intake", "Domain:iOS", "Domain:Android", "Domain:Web", "Domain:API"], assignee: "Program Office" },
+    { key: "BIGP-304", type: "Task", summary: "Submit Q1 capacity and hiring needs", status: "To Do", cat: "new", due: 6, labels: ["intake"], assignee: "Program Office" },
   ];
 
   const LINK = {
@@ -182,4 +185,28 @@ export function seedDemo(db: DatabaseSync) {
       "- Track lead to raise Dashboard GA risk at program sync",
     ].join("\n"),
   });
+
+  // Program action items, assigned out to teams. Platform-labelled intake items assign themselves.
+  ensureAutoAssignments(db);
+  const subTracks = ["Login & Auth", "Dashboard", "Payments"].map((name) => ({ kind: "subtrack" as const, name }));
+  setAssignments(db, "jira:BIGP-300", subTracks);
+  setAssignments(db, "jira:BIGP-304", subTracks);
+  const local = addActionItem(db, {
+    text: "Each platform: name a release-readiness owner for the pilot",
+    kind: "program",
+    owner: "Track Lead",
+    dueDate: d(9),
+  });
+  for (const p of ["iOS", "Android", "Web", "API"]) addAssignment(db, `local:${local}`, { kind: "platform", name: p });
+  for (const a of listAssignments(db)) {
+    if (a.parent === "jira:BIGP-303" && a.scope.name === "iOS") updateAssignment(db, a.id, { status: "done", owner: "Marcus Lee" });
+    if (a.parent === "jira:BIGP-303" && a.scope.name === "API") updateAssignment(db, a.id, { status: "done", owner: "Priya Shah" });
+    if (a.parent === "jira:BIGP-300" && a.scope.name === "Login & Auth") updateAssignment(db, a.id, { status: "done", owner: "Priya Shah" });
+    if (a.parent === `local:${local}` && a.scope.name === "Web") updateAssignment(db, a.id, { status: "done", owner: "Jordan Kim" });
+  }
+
+  // A few team action items captured in calls, linked to the work they move forward.
+  addActionItem(db, { text: "Get a committed date for fraud scoring API from Platform", owner: "Sam Patel", dueDate: d(-2), subTrack: "Payments", platform: "API", links: ["PLAT-7", "BIGP-105"] });
+  addActionItem(db, { text: "Draft re-plan options if Balances API v3 can't pull in", owner: "Jordan Kim", dueDate: d(5), subTrack: "Dashboard", platform: "Web", links: ["VIEW-50", "BIGP-103", "BIGP-202"] });
+  addActionItem(db, { text: "Borrow 4 Android test devices from the Non-Digital lab", owner: "Ana Gomez", dueDate: d(3), subTrack: "Login & Auth", platform: "Android", links: ["BIGP-201"] });
 }

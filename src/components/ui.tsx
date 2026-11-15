@@ -408,3 +408,15 @@ export function Table({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/** Plain select of team names (sub-tracks or platforms) for forms. */
+export function TeamSelect({ name, options, placeholder, value }: { name: string; options: string[]; placeholder: string; value: string }) {
+  return (
+    <select name={name} defaultValue={value} className={inputCls}>
+      <option value="">{placeholder}</option>
+      {options.map((o) => (
+        <option key={o}>{o}</option>
+      ))}
+    </select>
+  );
+}

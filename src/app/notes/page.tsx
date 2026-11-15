@@ -9,7 +9,7 @@ import {
   refreshNoteAction,
   stageNoteSuggestionsAction,
 } from "@/app/actions";
-import { Button, Card, KeyLink, PageHeader, fmtDate, inputCls } from "@/components/ui";
+import { Button, Card, KeyLink, PageHeader, TeamSelect, fmtDate, inputCls } from "@/components/ui";
 import { getDb, todayIso } from "@/lib/db";
 import { ACCEPTED_NOTE_FILES } from "@/lib/documents";
 import { loadModel } from "@/lib/model";
@@ -50,12 +50,10 @@ async function Notes() {
     }[]).map((r) => `${r.key}|${r.new_value}`),
   );
   const subTrackSelect = (
-    <select name="subTrack" defaultValue="" className={inputCls}>
-      <option value="">Sub-track (optional)</option>
-      {m.subTracks.map((s) => (
-        <option key={s}>{s}</option>
-      ))}
-    </select>
+    <div className="grid grid-cols-2 gap-2">
+      <TeamSelect name="subTrack" options={m.subTracks} placeholder="Sub-track" value="" />
+      <TeamSelect name="platform" options={m.platforms} placeholder="Platform" value="" />
+    </div>
   );
 
   return (

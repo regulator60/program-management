@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { DEFAULT_CONFIG, getConfig, saveConfig, type AppConfig } from "@/lib/config";
 import {
+  actionContext,
   fetchSheetCsv,
   importAttachedNote,
   importConfluencePage,
@@ -20,6 +21,10 @@ import { importJiraFile } from "@/lib/jira/fileImport";
 import { seedDemo } from "@/lib/seed";
 import {
   addActionItem,
+  ensureAutoAssignments,
+  listAssignments,
+  setAssignments,
+  updateAssignment,
   clearAllData,
   deleteActionItem,
   deleteNote,
@@ -31,7 +36,7 @@ import {
   updateActionItem,
   upsertIssues,
 } from "@/lib/store";
-import { EDITABLE_FIELDS, type EditableField } from "@/lib/types";
+import { EDITABLE_FIELDS, parseScope, type EditableField, type Scope } from "@/lib/types";
 
 // NOTE: this app is meant to run locally (localhost) for a single user, so
 // server actions don't authenticate. Add auth before hosting it anywhere shared.
@@ -75,6 +80,7 @@ export async function importJiraFileAction(fd: FormData) {
       syncedAt: nowIso(),
     });
     const r = upsertIssues(db, items);
+    ensureAutoAssignments(db);
     const msg = `Imported ${items.length} issues from ${file.name}: ${r.inserted} new, ${r.updated} updated, ${r.changes} field changes.`;
     logSync(db, "file", true, msg, startedAt);
     return msg;
@@ -190,6 +196,7 @@ export async function addNoteAction(fd: FormData) {
       body,
       meetingDate: str(fd, "meetingDate") || null,
       subTrack: str(fd, "subTrack") || null,
+      platform: str(fd, "platform") || null,
     });
     return `Note saved. Found ${r.actions} action item(s).`;
   });
@@ -199,7 +206,7 @@ export async function importGoogleDocAction(fd: FormData) {
   await attempt("/notes", async () => {
     const url = str(fd, "url");
     if (!url) throw new Error("Paste a Google Docs link.");
-    const r = await importGoogleDoc(getDb(), url, { subTrack: str(fd, "subTrack") || null });
+    const r = await importGoogleDoc(getDb(), url, { subTrack: str(fd, "subTrack") || null, platform: str(fd, "platform") || null });
     return `${r.updated ? "Refreshed" : "Imported"} "${r.title}". ${r.actions} new action item(s). Review suggested Jira updates below.`;
   });
 }
@@ -215,6 +222,7 @@ export async function attachNoteAction(fd: FormData) {
       title: str(fd, "title"),
       meetingDate: str(fd, "meetingDate") || null,
       subTrack: str(fd, "subTrack") || null,
+      platform: str(fd, "platform") || null,
     });
     return `Attached ${file.name}. Found ${r.actions} action item(s). Review suggested Jira updates below.`;
   });
@@ -264,17 +272,86 @@ export async function deleteNoteAction(fd: FormData) {
   });
 }
 
+const keysFrom = (v: string) => v.split(/[\s,]+/).map((k) => k.trim().toUpperCase()).filter(Boolean);
+
 export async function addActionItemAction(fd: FormData) {
-  await attempt("/actions", () => {
+  await attempt(str(fd, "back") || "/actions", () => {
     const text = str(fd, "text");
     if (!text) throw new Error("Action item text is empty.");
-    addActionItem(getDb(), {
+    const db = getDb();
+    // Explicit fields win; otherwise infer team and links from the text, like notes do.
+    const inferred = actionContext(db).scopeFor(text, { subTrack: str(fd, "subTrack"), platform: str(fd, "platform") });
+    addActionItem(db, {
       text,
       owner: str(fd, "owner") || null,
       dueDate: str(fd, "dueDate") || null,
-      subTrack: str(fd, "subTrack") || null,
+      subTrack: inferred.subTrack,
+      platform: inferred.platform,
+      links: [...new Set([...keysFrom(str(fd, "links")), ...inferred.links])],
     });
     return "Action item added.";
+  });
+}
+
+// ---------- Program action items ----------
+
+const scopesFrom = (fd: FormData) =>
+  fd
+    .getAll("scope")
+    .map((v) => parseScope(String(v)))
+    .filter((s): s is Scope => !!s);
+
+export async function addProgramActionAction(fd: FormData) {
+  await attempt("/actions", () => {
+    const text = str(fd, "text");
+    if (!text) throw new Error("Describe the program action item.");
+    const scopes = scopesFrom(fd);
+    if (!scopes.length) throw new Error("Assign it to at least one sub-track or platform.");
+    const db = getDb();
+    const id = addActionItem(db, { text, kind: "program", owner: str(fd, "owner") || null, dueDate: str(fd, "dueDate") || null });
+    setAssignments(db, `local:${id}`, scopes);
+    return `Program action item added and assigned to ${scopes.length} team${scopes.length === 1 ? "" : "s"}.`;
+  });
+}
+
+export async function setAssignmentsAction(fd: FormData) {
+  await attempt(str(fd, "back") || "/actions", () => {
+    const parent = str(fd, "parent");
+    if (!/^(jira|local):.+/.test(parent)) throw new Error("Unknown program action item.");
+    setAssignments(getDb(), parent, scopesFrom(fd));
+    return "Assignments updated. Teams that already finished were kept.";
+  });
+}
+
+export async function updateAssignmentAction(fd: FormData) {
+  await attempt(str(fd, "back") || "/actions", () => {
+    const patch: Parameters<typeof updateAssignment>[2] = {};
+    if (fd.has("status")) patch.status = str(fd, "status") === "done" ? "done" : "open";
+    if (fd.has("owner")) patch.owner = str(fd, "owner");
+    if (fd.has("dueDate")) patch.dueDate = str(fd, "dueDate");
+    if (fd.has("note")) patch.note = str(fd, "note");
+    updateAssignment(getDb(), Number(str(fd, "id")), patch);
+    return patch.status === "done" ? "Marked done for this team." : patch.status === "open" ? "Reopened for this team." : "Saved.";
+  });
+}
+
+/** All teams finished: close the ask. Jira items get a staged status change + summary comment. */
+export async function closeProgramActionAction(fd: FormData) {
+  await attempt(str(fd, "back") || "/actions", () => {
+    const db = getDb();
+    const parent = str(fd, "parent");
+    const done = listAssignments(db).filter((a) => a.parent === parent && a.status === "done");
+    const summary = `Completed by all assigned teams: ${done
+      .map((a) => `${a.scope.name}${a.owner ? ` (${a.owner})` : ""}${a.doneAt ? ` on ${a.doneAt.slice(0, 10)}` : ""}`)
+      .join("; ")}.`;
+    if (parent.startsWith("jira:")) {
+      const key = parent.slice(5);
+      stageEdit(db, key, "status", getConfig(db).jira.doneStatus || "Done");
+      stageEdit(db, key, "comment", summary);
+      return `Staged ${key} → Done with a summary comment. Push it from Data & Jira sync.`;
+    }
+    updateActionItem(db, Number(parent.slice(6)), { status: "done" });
+    return "Program action item closed.";
   });
 }
 
@@ -287,13 +364,15 @@ export async function updateActionItemAction(fd: FormData) {
     if (fd.has("dueDate")) patch.dueDate = str(fd, "dueDate");
     if (fd.has("jiraKey")) patch.jiraKey = str(fd, "jiraKey").toUpperCase();
     if (fd.has("subTrack")) patch.subTrack = str(fd, "subTrack");
+    if (fd.has("platform")) patch.platform = str(fd, "platform");
+    if (fd.has("links")) patch.links = keysFrom(str(fd, "links"));
     updateActionItem(getDb(), id, patch);
     return "Action item updated.";
   });
 }
 
 export async function deleteActionItemAction(fd: FormData) {
-  await attempt("/actions", () => {
+  await attempt(str(fd, "back") || "/actions", () => {
     deleteActionItem(getDb(), Number(str(fd, "id")));
     return "Action item deleted.";
   });

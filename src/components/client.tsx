@@ -14,6 +14,7 @@ import {
   Settings,
   ShieldAlert,
   TriangleAlert,
+  Users,
   Waypoints,
   X,
   type LucideIcon,
@@ -31,7 +32,10 @@ type NavItem = { href: string; label: string; icon: LucideIcon; keepFilters?: bo
 export const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Overview",
-    items: [{ href: "/", label: "Executive overview", icon: LayoutDashboard, keepFilters: true }],
+    items: [
+      { href: "/", label: "Executive overview", icon: LayoutDashboard, keepFilters: true },
+      { href: "/s0", label: "S0 weekly review", icon: Users },
+    ],
   },
   {
     title: "Plan",

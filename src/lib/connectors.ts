@@ -6,10 +6,12 @@ import { dateFromTitle, documentToText, fetchGoogleDoc, storeAttachment } from "
 import { toIsoDate } from "./jira/classify";
 import { JiraClient } from "./jira/client";
 import { normalizeIssue } from "./jira/normalize";
+import { loadModel } from "./model";
 import { confluenceStorageToText, extractActionItems, normaliseActionText } from "./notes";
 import {
   addActionItem,
   addNote,
+  ensureAutoAssignments,
   findNoteBySource,
   getNote,
   listActionItems,
@@ -51,6 +53,7 @@ export async function syncJira(db: DatabaseSync): Promise<string> {
     const external = linked.size ? await client.getByKeys([...linked], cfg) : [];
     items.push(...external.map((r) => normalizeIssue(r, cfg, { inScope: false, syncedAt })));
     const res = upsertIssues(db, items);
+    ensureAutoAssignments(db);
     const msg = `Jira sync: ${scope.length} in scope, ${intake.length} intake, ${external.length} linked. ${res.inserted} new, ${res.updated} updated, ${res.changes} field changes detected.`;
     logSync(db, "jira", true, msg, startedAt);
     return msg;
@@ -129,24 +132,66 @@ export function importNoteText(db: DatabaseSync, n: NoteInput) {
     noteId = addNote(db, n);
   }
   const year = n.meetingDate ? Number(n.meetingDate.slice(0, 4)) : new Date().getFullYear();
-  const found = extractActionItems(n.body, year);
+  const ctx = actionContext(db);
+  const found = extractActionItems(n.body, year, ctx.teams);
   const have = new Set(
     listActionItems(db)
       .filter((a) => a.noteId === noteId)
       .map((a) => normaliseActionText(a.text)),
   );
   let added = 0;
-  for (const a of found) {
+  for (const { team, ...a } of found) {
     if (have.has(normaliseActionText(a.text))) continue;
-    addActionItem(db, { ...a, noteId, subTrack: n.subTrack ?? null });
+    const given = {
+      subTrack: n.subTrack || (team && ctx.isSubTrack(team) ? team : null),
+      platform: n.platform || (team && !ctx.isSubTrack(team) ? team : null),
+    };
+    addActionItem(db, { ...a, noteId, ...ctx.scopeFor(a.text, given) });
     added++;
   }
   return { noteId, actions: added, found: found.length, updated: !!linked };
 }
 
+/**
+ * Work out what an action item is about: the Jira keys it mentions (links),
+ * and which platform / sub-track owns it. The note's own team wins; otherwise
+ * a platform named in the text, otherwise the linked issue's team.
+ */
+export function actionContext(db: DatabaseSync) {
+  const m = loadModel(db);
+  const platformNames = m.platforms;
+  return {
+    teams: [...m.subTracks, ...m.platforms],
+    isSubTrack: (name: string) => m.subTracks.includes(name),
+    scopeFor(text: string, given: { subTrack?: string | null; platform?: string | null }) {
+      const links = [...new Set(text.match(/\b[A-Z][A-Z0-9]{1,9}-\d+\b/g) ?? [])].filter((k) => m.byKey.has(k));
+      const named = platformNames.filter((p) => new RegExp(`(^|[^A-Za-z])${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z]|$)`, "i").test(text));
+      const fromLinks = (pick: (k: string) => string | null | undefined) => {
+        const vals = [...new Set(links.map(pick).filter((v): v is string => !!v))];
+        return vals.length === 1 ? vals[0] : null;
+      };
+      return {
+        links,
+        platform:
+          given.platform ||
+          (named.length === 1 ? named[0] : null) ||
+          fromLinks((k) => {
+            const ps = m.platformsOf.get(k) ?? [];
+            return ps.length === 1 ? ps[0] : null;
+          }),
+        subTrack: given.subTrack || fromLinks((k) => m.subTrackOf.get(k)),
+      };
+    },
+  };
+}
+
 // ---------------- Google Docs & attached files ----------------
 
-export async function importGoogleDoc(db: DatabaseSync, url: string, opts: { subTrack?: string | null } = {}) {
+export async function importGoogleDoc(
+  db: DatabaseSync,
+  url: string,
+  opts: { subTrack?: string | null; platform?: string | null } = {},
+) {
   const startedAt = nowIso();
   try {
     const doc = await fetchGoogleDoc(url);
@@ -157,6 +202,7 @@ export async function importGoogleDoc(db: DatabaseSync, url: string, opts: { sub
       source: `gdoc:${doc.id}`,
       sourceUrl: doc.url,
       subTrack: opts.subTrack ?? null,
+      platform: opts.platform ?? null,
     });
     logSync(db, "google-docs", true, `${r.updated ? "Refreshed" : "Imported"} "${doc.title}": ${r.actions} new action items`, startedAt);
     return { ...r, title: doc.title };
@@ -169,7 +215,7 @@ export async function importGoogleDoc(db: DatabaseSync, url: string, opts: { sub
 /** A downloaded notes file (.docx/.txt/.md/.html). The original is kept next to the database. */
 export function importAttachedNote(
   db: DatabaseSync,
-  f: { name: string; bytes: Buffer; title?: string; meetingDate?: string | null; subTrack?: string | null },
+  f: { name: string; bytes: Buffer; title?: string; meetingDate?: string | null; subTrack?: string | null; platform?: string | null },
 ) {
   const body = documentToText(f.name, f.bytes);
   if (!body.trim()) throw new Error(`No text found in ${f.name}.`);
@@ -181,6 +227,7 @@ export function importAttachedNote(
     source: "upload",
     attachmentName: f.name,
     subTrack: f.subTrack ?? null,
+    platform: f.platform ?? null,
   });
   setNoteAttachment(db, r.noteId, f.name, storeAttachment(r.noteId, f.name, f.bytes));
   logSync(db, "notes-upload", true, `Attached "${f.name}": ${r.actions} action items`, nowIso());
@@ -191,7 +238,9 @@ export function importAttachedNote(
 export async function refreshNote(db: DatabaseSync, id: number) {
   const note = getNote(db, id);
   if (!note) throw new Error("Note not found.");
-  if (note.source.startsWith("gdoc:")) return importGoogleDoc(db, note.sourceUrl ?? note.source.slice(5), { subTrack: note.subTrack });
+  if (note.source.startsWith("gdoc:")) {
+    return importGoogleDoc(db, note.sourceUrl ?? note.source.slice(5), { subTrack: note.subTrack, platform: note.platform });
+  }
   if (note.source.startsWith("confluence:")) return importConfluencePage(db, note.source.slice(11));
   throw new Error("This note wasn't imported from a linked source, so there's nothing to refresh.");
 }

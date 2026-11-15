@@ -146,6 +146,7 @@ export type Note = {
   attachmentName: string | null; // original uploaded file name
   attachmentPath: string | null; // where the original is stored on disk
   subTrack: string | null;
+  platform: string | null;
   createdAt: string;
   updatedAt: string | null;
 };
@@ -157,7 +158,37 @@ export type ActionItem = {
   owner: string | null;
   dueDate: string | null;
   status: "open" | "done";
+  /** Jira issue this action is tracked as, once created there. */
   jiraKey: string | null;
   subTrack: string | null;
+  platform: string | null;
+  /** "team": a small action from notes or a call. "program": a high-level ask assigned to teams. */
+  kind: "team" | "program";
+  /** Jira items (milestones, dependencies, risks…) this action helps move forward. */
+  links: string[];
+  createdAt: string;
+};
+
+/** A sub-track or a platform: the unit that owns work and reports in S0 calls. */
+export type Scope = { kind: "subtrack" | "platform"; name: string };
+
+export const scopeId = (s: Scope) => `${s.kind}:${s.name}`;
+export function parseScope(id: string | null | undefined): Scope | null {
+  const m = id?.match(/^(subtrack|platform):(.+)$/);
+  return m ? { kind: m[1] as Scope["kind"], name: m[2] } : null;
+}
+export const scopeLabel = (s: Scope) => `${s.name} (${s.kind === "subtrack" ? "sub-track" : "platform"})`;
+
+/** One team's part of a program action item. */
+export type ProgramAssignment = {
+  id: number;
+  /** "jira:BIGP-300" for an intake issue, "local:12" for a local program action item. */
+  parent: string;
+  scope: Scope;
+  status: "open" | "done";
+  owner: string | null;
+  dueDate: string | null;
+  note: string | null;
+  doneAt: string | null;
   createdAt: string;
 };

@@ -1,7 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { nowIso } from "./db";
+import { scopeId } from "./types";
 import type {
   ActionItem,
+  ProgramAssignment,
+  Scope,
   EditableField,
   Issue,
   IssueChange,
@@ -330,6 +333,7 @@ export function markEditsPushed(db: DatabaseSync, ids: number[], method: string)
 
 function rowToNote(r: Row): Note {
   return {
+    platform: (r.platform as string) ?? null,
     id: Number(r.id),
     title: String(r.title),
     body: String(r.body),
@@ -361,6 +365,7 @@ export function findNoteBySource(db: DatabaseSync, source: string): Note | null 
 }
 
 export type NoteInput = {
+  platform?: string | null;
   title: string;
   body: string;
   meetingDate?: string | null;
@@ -374,8 +379,8 @@ export type NoteInput = {
 export function addNote(db: DatabaseSync, n: NoteInput): number {
   const res = db
     .prepare(
-      `INSERT INTO notes (title, body, meeting_date, source, source_url, attachment_name, attachment_path, sub_track, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO notes (title, body, meeting_date, source, source_url, attachment_name, attachment_path, sub_track, platform, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       n.title,
@@ -386,6 +391,7 @@ export function addNote(db: DatabaseSync, n: NoteInput): number {
       n.attachmentName ?? null,
       n.attachmentPath ?? null,
       n.subTrack ?? null,
+      n.platform ?? null,
       nowIso(),
     );
   return Number(res.lastInsertRowid);
@@ -414,6 +420,11 @@ export function deleteNote(db: DatabaseSync, id: number) {
 }
 
 export function listActionItems(db: DatabaseSync): ActionItem[] {
+  const links = new Map<number, string[]>();
+  for (const r of db.prepare("SELECT action_id, key FROM action_links ORDER BY key").all() as Row[]) {
+    const id = Number(r.action_id);
+    links.set(id, [...(links.get(id) ?? []), String(r.key)]);
+  }
   return (db.prepare("SELECT * FROM action_items ORDER BY status, due_date IS NULL, due_date, id").all() as Row[]).map(
     (r) => ({
       id: Number(r.id),
@@ -424,6 +435,9 @@ export function listActionItems(db: DatabaseSync): ActionItem[] {
       status: r.status as ActionItem["status"],
       jiraKey: (r.jira_key as string) ?? null,
       subTrack: (r.sub_track as string) ?? null,
+      platform: (r.platform as string) ?? null,
+      kind: (r.kind as ActionItem["kind"]) ?? "team",
+      links: links.get(Number(r.id)) ?? [],
       createdAt: String(r.created_at),
     }),
   );
@@ -435,7 +449,7 @@ export function addActionItem(
 ): number {
   const res = db
     .prepare(
-      "INSERT INTO action_items (note_id, text, owner, due_date, status, jira_key, sub_track, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO action_items (note_id, text, owner, due_date, status, jira_key, sub_track, platform, kind, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       a.noteId ?? null,
@@ -445,15 +459,25 @@ export function addActionItem(
       a.status ?? "open",
       a.jiraKey ?? null,
       a.subTrack ?? null,
+      a.platform ?? null,
+      a.kind ?? "team",
       nowIso(),
     );
-  return Number(res.lastInsertRowid);
+  const id = Number(res.lastInsertRowid);
+  if (a.links?.length) setActionLinks(db, id, a.links);
+  return id;
+}
+
+export function setActionLinks(db: DatabaseSync, id: number, keys: string[]) {
+  db.prepare("DELETE FROM action_links WHERE action_id = ?").run(id);
+  const ins = db.prepare("INSERT OR IGNORE INTO action_links (action_id, key) VALUES (?, ?)");
+  for (const k of new Set(keys.map((x) => x.trim().toUpperCase()).filter(Boolean))) ins.run(id, k);
 }
 
 export function updateActionItem(
   db: DatabaseSync,
   id: number,
-  patch: Partial<Pick<ActionItem, "status" | "owner" | "dueDate" | "jiraKey" | "text" | "subTrack">>,
+  patch: Partial<Pick<ActionItem, "status" | "owner" | "dueDate" | "jiraKey" | "text" | "subTrack" | "platform" | "links">>,
 ) {
   const cols: Record<string, string> = {
     status: "status",
@@ -462,10 +486,83 @@ export function updateActionItem(
     jiraKey: "jira_key",
     text: "text",
     subTrack: "sub_track",
+    platform: "platform",
   };
   for (const [k, v] of Object.entries(patch)) {
+    if (k === "links" && Array.isArray(v)) {
+      setActionLinks(db, id, v);
+      continue;
+    }
     if (v === undefined || !cols[k]) continue;
-    db.prepare(`UPDATE action_items SET ${cols[k]} = ? WHERE id = ?`).run(v === "" ? null : v, id);
+    db.prepare(`UPDATE action_items SET ${cols[k]} = ? WHERE id = ?`).run(v === "" ? null : (v as string), id);
+  }
+}
+
+// ---------- Program action items: per-team assignments ----------
+
+function rowToAssignment(r: Row): ProgramAssignment {
+  return {
+    id: Number(r.id),
+    parent: String(r.parent),
+    scope: { kind: r.scope_kind as Scope["kind"], name: String(r.scope_name) },
+    status: r.status as ProgramAssignment["status"],
+    owner: (r.owner as string) ?? null,
+    dueDate: (r.due_date as string) ?? null,
+    note: (r.note as string) ?? null,
+    doneAt: (r.done_at as string) ?? null,
+    createdAt: String(r.created_at),
+  };
+}
+
+export function listAssignments(db: DatabaseSync): ProgramAssignment[] {
+  return (db.prepare("SELECT * FROM program_assignments ORDER BY parent, scope_kind DESC, scope_name").all() as Row[]).map(
+    rowToAssignment,
+  );
+}
+
+/** Make sure `parent` is assigned to exactly these scopes. Removing a scope keeps it if already done. */
+export function setAssignments(db: DatabaseSync, parent: string, scopes: Scope[]) {
+  const want = new Set(scopes.map(scopeId));
+  for (const a of listAssignments(db).filter((x) => x.parent === parent)) {
+    if (!want.has(scopeId(a.scope)) && a.status !== "done") db.prepare("DELETE FROM program_assignments WHERE id = ?").run(a.id);
+  }
+  for (const s of scopes) addAssignment(db, parent, s);
+}
+
+export function addAssignment(db: DatabaseSync, parent: string, s: Scope) {
+  db.prepare(
+    "INSERT OR IGNORE INTO program_assignments (parent, scope_kind, scope_name, created_at) VALUES (?, ?, ?, ?)",
+  ).run(parent, s.kind, s.name, nowIso());
+}
+
+export function updateAssignment(
+  db: DatabaseSync,
+  id: number,
+  patch: Partial<Pick<ProgramAssignment, "status" | "owner" | "dueDate" | "note">>,
+) {
+  if (patch.status) {
+    db.prepare("UPDATE program_assignments SET status = ?, done_at = ? WHERE id = ?").run(
+      patch.status,
+      patch.status === "done" ? nowIso() : null,
+      id,
+    );
+  }
+  for (const [k, col] of [["owner", "owner"], ["dueDate", "due_date"], ["note", "note"]] as const) {
+    if (patch[k] !== undefined) {
+      db.prepare(`UPDATE program_assignments SET ${col} = ? WHERE id = ?`).run(patch[k] || null, id);
+    }
+  }
+}
+
+/**
+ * Intake issues labelled with platforms (Domain:…) or a sub-track get those
+ * teams assigned automatically. Never removes anything; safe to call after every load.
+ */
+export function ensureAutoAssignments(db: DatabaseSync) {
+  for (const i of listIssues(db)) {
+    if (!i.isIntake) continue;
+    for (const p of i.platforms) addAssignment(db, `jira:${i.key}`, { kind: "platform", name: p });
+    if (i.subTrack) addAssignment(db, `jira:${i.key}`, { kind: "subtrack", name: i.subTrack });
   }
 }
 
@@ -494,6 +591,6 @@ export function recentSyncs(db: DatabaseSync, limit = 10) {
 
 export function clearAllData(db: DatabaseSync) {
   db.exec(
-    "DELETE FROM issues; DELETE FROM links; DELETE FROM issue_changes; DELETE FROM pending_edits; DELETE FROM action_items; DELETE FROM notes; DELETE FROM sync_log;",
+    "DELETE FROM issues; DELETE FROM links; DELETE FROM issue_changes; DELETE FROM pending_edits; DELETE FROM action_links; DELETE FROM program_assignments; DELETE FROM action_items; DELETE FROM notes; DELETE FROM sync_log;",
   );
 }

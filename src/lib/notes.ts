@@ -4,6 +4,8 @@ export type ExtractedAction = {
   text: string;
   owner: string | null;
   dueDate: string | null;
+  /** Set when the item sits under a heading that names a known team (sub-track or platform). */
+  team?: string;
 };
 
 const MARKERS = [
@@ -41,17 +43,29 @@ function normaliseLine(line: string) {
  *   every line under an "Action items" / "Next steps" / "Suggested next steps" heading
  * Owners: "@name", "(owner: name)", "Name to ...". Dues: "by 12/5", "due 2026-12-05", "by Nov 30".
  */
-export function extractActionItems(body: string, refYear = new Date().getFullYear()): ExtractedAction[] {
+export function extractActionItems(
+  body: string,
+  refYear = new Date().getFullYear(),
+  /** Team names (sub-tracks, platforms); a heading naming one scopes the items under it. */
+  teams: string[] = [],
+): ExtractedAction[] {
   const out: ExtractedAction[] = [];
   const seen = new Set<string>();
+  const teamByName = new Map(teams.map((t) => [t.toLowerCase(), t]));
   let inSection = false;
+  let team: string | undefined;
   for (const raw of body.split(/\r?\n/)) {
     const line = normaliseLine(raw);
     if (SECTION_HEADING.test(line)) {
       inSection = true;
       continue;
     }
-    if (inSection && isHeading(line)) inSection = false;
+    if (isHeading(line)) {
+      if (inSection) inSection = false;
+      const name = line.trim().replace(/^#+\s*/, "").replace(/:$/, "").trim().toLowerCase();
+      team = teamByName.get(name);
+      if (team) continue;
+    }
     if (/^\s*(?:[-*•]\s*)?\[x\]/i.test(line)) continue; // already done
     let text: string | null = null;
     for (const re of MARKERS) {
@@ -69,7 +83,7 @@ export function extractActionItems(body: string, refYear = new Date().getFullYea
     const k = normaliseActionText(clean);
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ text: clean, owner: findOwner(clean), dueDate: findDue(clean, refYear) });
+    out.push({ text: clean, owner: findOwner(clean), dueDate: findDue(clean, refYear), ...(team ? { team } : {}) });
   }
   return out;
 }
