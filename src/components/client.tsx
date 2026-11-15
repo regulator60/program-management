@@ -22,6 +22,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Select } from "./select";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
@@ -129,30 +130,17 @@ export function FilterBar({
   };
   const active = sp.get("subtrack") || sp.get("platform");
   const select = ({ name, label, options }: { name: string; label: string; options: { value: string; label: string }[] }) => {
-    const value = sp.get(name) ?? "";
     return (
-      <label
-        key={name}
-        className={
-          "inline-flex h-8 items-center gap-1.5 rounded-lg border pl-2.5 pr-1 text-sm shadow-sm transition " +
-          (value && (name === "subtrack" || name === "platform")
-            ? "border-accent/40 bg-accent-soft"
-            : "border-line bg-panel hover:border-line-strong")
-        }
-      >
-        <span className="text-xs font-medium text-muted">{label}</span>
-        <select
-          className="h-full cursor-pointer bg-transparent pr-1 text-sm font-medium text-fg outline-none"
-          value={value}
-          onChange={(e) => set(name, e.target.value)}
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div key={name} className="w-auto min-w-36">
+        <Select
+          size="sm"
+          label={label}
+          options={options}
+          value={sp.get(name) ?? ""}
+          onValueChange={(v) => set(name, v)}
+          highlightWhenSet={name === "subtrack" || name === "platform"}
+        />
+      </div>
     );
   };
   return (

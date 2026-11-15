@@ -68,6 +68,8 @@ export type AppConfig = {
     bufferDays: number;
     /** Dates changed within this many days are shown as "recently updated". */
     recentChangeDays: number;
+    /** Risks/decisions with no update for this many days are flagged for an update in S0. */
+    staleDays: number;
   };
 };
 
@@ -110,7 +112,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     tierPattern: "^tier[\\s:_-]*([123])$",
   },
   links: { containsOutward: "contains" },
-  analysis: { bufferDays: 5, recentChangeDays: 14 },
+  analysis: { bufferDays: 5, recentChangeDays: 14, staleDays: 7 },
 };
 
 function deepMerge<T>(base: T, override: unknown): T {

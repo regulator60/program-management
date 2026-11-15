@@ -2,6 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { nowIso } from "./db";
 import { scopeId } from "./types";
 import type {
+  ItemUpdate,
+  UpdateProgress,
   ActionItem,
   ProgramAssignment,
   Scope,
@@ -498,6 +500,40 @@ export function updateActionItem(
   }
 }
 
+// ---------- Item updates (S0 notes) ----------
+
+export function addItemUpdate(
+  db: DatabaseSync,
+  u: { key: string; body: string; progress?: UpdateProgress | null; scope?: string | null; sentToJira?: boolean },
+): number {
+  const res = db
+    .prepare("INSERT INTO item_updates (key, body, progress, scope, sent_to_jira, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(u.key, u.body, u.progress ?? null, u.scope ?? null, u.sentToJira ? 1 : 0, nowIso());
+  return Number(res.lastInsertRowid);
+}
+
+/** Newest first. */
+export function listItemUpdates(db: DatabaseSync, key?: string): ItemUpdate[] {
+  const rows = (
+    key
+      ? db.prepare("SELECT * FROM item_updates WHERE key = ? ORDER BY created_at DESC, id DESC").all(key)
+      : db.prepare("SELECT * FROM item_updates ORDER BY created_at DESC, id DESC").all()
+  ) as Row[];
+  return rows.map((r) => ({
+    id: Number(r.id),
+    key: String(r.key),
+    body: String(r.body),
+    progress: (r.progress as UpdateProgress) ?? null,
+    scope: (r.scope as string) ?? null,
+    sentToJira: Boolean(r.sent_to_jira),
+    createdAt: String(r.created_at),
+  }));
+}
+
+export function deleteItemUpdate(db: DatabaseSync, id: number) {
+  db.prepare("DELETE FROM item_updates WHERE id = ?").run(id);
+}
+
 // ---------- Program action items: per-team assignments ----------
 
 function rowToAssignment(r: Row): ProgramAssignment {
@@ -591,6 +627,6 @@ export function recentSyncs(db: DatabaseSync, limit = 10) {
 
 export function clearAllData(db: DatabaseSync) {
   db.exec(
-    "DELETE FROM issues; DELETE FROM links; DELETE FROM issue_changes; DELETE FROM pending_edits; DELETE FROM action_links; DELETE FROM program_assignments; DELETE FROM action_items; DELETE FROM notes; DELETE FROM sync_log;",
+    "DELETE FROM issues; DELETE FROM links; DELETE FROM issue_changes; DELETE FROM pending_edits; DELETE FROM action_links; DELETE FROM program_assignments; DELETE FROM item_updates; DELETE FROM action_items; DELETE FROM notes; DELETE FROM sync_log;",
   );
 }

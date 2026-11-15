@@ -45,7 +45,8 @@ import { headline } from "@/lib/insights";
 import { loadModel } from "@/lib/model";
 import { allScopes, listProgramActions } from "@/lib/programActions";
 import { buildS0, type AgendaItem } from "@/lib/s0";
-import { listActionItems } from "@/lib/store";
+import { listActionItems, listItemUpdates } from "@/lib/store";
+import { LastUpdate, UpdateComposer } from "@/components/updates";
 import { parseScope, scopeId, type Scope } from "@/lib/types";
 
 /** S0 view for one team; `scopeParam` is "subtrack:Name" / "platform:Name", or null for the first team. */
@@ -62,6 +63,7 @@ export const s0Href = (s: Scope) => `/s0/${s.kind}/${encodeURIComponent(s.name)}
 const SECTION_LABEL: Record<AgendaItem["section"], string> = {
   wins: "Wins since last week",
   discuss: "Discuss and decide",
+  review: "Risks & decisions to review",
   asks: "Program asks for this team",
   actions: "Action items",
   changes: "What moved this week",
@@ -85,7 +87,8 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
   }
   const scope: Scope = parseScope(requested) ?? scopes[0];
   const actions = listActionItems(db);
-  const s0 = buildS0(m, scope, { actions, programs: listProgramActions(db, m, actions) });
+  const s0 = buildS0(m, scope, { actions, programs: listProgramActions(db, m, actions), updates: listItemUpdates(db) });
+  const scopeKey = scopeId(scope);
   const back = s0Href(scope);
   const nodes = new Map(flattenTree(m.tree).map((n) => [n.issue.key, n]));
   const atRisk = new Set(s0.insights.flatMap((i) => [i.key, i.threatens?.key]).filter(Boolean) as string[]);
@@ -221,6 +224,8 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
                       <div className="mt-0.5 text-xs text-muted">
                         Due {fmtDate(i.dueDate, false)} ({relDays(i.dueDate, m.today)}) · {i.assignee ?? "no owner"}
                       </div>
+                      <LastUpdate u={s0.latestUpdate.get(i.key)} today={m.today} />
+                      <UpdateComposer issueKey={i.key} scope={scopeKey} back={back} />
                     </div>
                     {node && <Progress done={node.rollup.done} total={node.rollup.total} width="w-20" />}
                   </li>
@@ -249,6 +254,8 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
                       </div>
                       <div className="font-medium text-fg">{other.summary}</div>
                       <div className="mt-0.5 text-xs text-ink-2">{d.reason}</div>
+                      <LastUpdate u={s0.latestUpdate.get(other.key)} today={m.today} />
+                      <UpdateComposer issueKey={other.key} scope={scopeKey} back={back} label={`Add update on ${other.key}`} />
                     </div>
                   </li>
                 );
@@ -258,14 +265,75 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
         </Card>
       </div>
 
-      <div className="mb-6 grid gap-6 xl:grid-cols-2">
-        <Card title="Risks" icon={ShieldAlert} flush>
-          <RaidList items={s0.risks} today={m.today} empty="No open risks." />
-        </Card>
-        <Card title="Decisions" icon={Scale} flush>
-          <RaidList items={s0.decisions} today={m.today} empty="No open decisions." />
-        </Card>
-      </div>
+      <Card
+        title="Risks & decisions to review"
+        icon={ShieldAlert}
+        subtitle={`Raised when there's no update in ${m.cfg.analysis.staleDays} days, it's blocked or stalled, overdue or due soon, or has no owner. Capture what's moving right here.`}
+        className="mb-6"
+        flush
+      >
+        {s0.reviewTopics.length === 0 ? (
+          <p className="p-5 text-sm text-muted">Every open risk and decision has a recent update and nothing is due. 🎉</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {s0.reviewTopics.map((t) => (
+              <li key={t.issue.key} id={`raid-${t.issue.key}`} className="scroll-mt-20 px-5 py-4">
+                <div className="flex flex-wrap items-start gap-3">
+                  <SeverityIcon severity={t.severity} className="mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ToneBadge tone={t.issue.level === "risk" ? "serious" : "info"} icon={t.issue.level === "decision" ? Scale : ShieldAlert}>
+                        {t.issue.level === "risk" ? "Risk" : "Decision"}
+                        {t.issue.tier ? ` · T${t.issue.tier}` : ""}
+                      </ToneBadge>
+                      <KeyLink k={t.issue.key} />
+                      <StatusPill issue={t.issue} />
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-fg">{t.issue.summary}</div>
+                    <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
+                      <span>Owner: {t.issue.assignee ?? "none"}</span>
+                      {t.issue.dueDate && <span>Target {fmtDate(t.issue.dueDate, false)} ({relDays(t.issue.dueDate, m.today)})</span>}
+                      <span>
+                        Last activity {t.lastActivity ? `${fmtDate(t.lastActivity.slice(0, 10), false)} (${relDays(t.lastActivity.slice(0, 10), m.today)})` : "never"}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {t.reasons.map((r) => (
+                        <span key={r} className="rounded-md bg-panel-2 px-2 py-0.5 text-xs font-medium text-ink-2 ring-1 ring-inset ring-line">
+                          {r}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-sm italic text-ink-2">Ask: {t.question}</p>
+                    <LastUpdate u={t.lastUpdate} today={m.today} />
+                    <UpdateComposer issueKey={t.issue.key} scope={scopeKey} back={`${back}#raid-${t.issue.key}`} />
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {s0.quietRaid.length > 0 && (
+          <details className="border-t border-line">
+            <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-accent hover:bg-panel-2">
+              {s0.quietRaid.length} other open risk{s0.quietRaid.length === 1 ? "" : "s"} &amp; decision{s0.quietRaid.length === 1 ? "" : "s"} with recent updates
+            </summary>
+            <ul className="divide-y divide-line border-t border-line">
+              {s0.quietRaid.map(({ issue: r, lastUpdate }) => (
+                <li key={r.key} id={`raid-${r.key}`} className="px-5 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ToneBadge tone="neutral">{r.level === "risk" ? "Risk" : "Decision"}{r.tier ? ` · T${r.tier}` : ""}</ToneBadge>
+                    <KeyLink k={r.key} />
+                    <span className="text-sm text-fg">{r.summary}</span>
+                  </div>
+                  <LastUpdate u={lastUpdate} today={m.today} />
+                  <UpdateComposer issueKey={r.key} scope={scopeKey} back={`${back}#raid-${r.key}`} />
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Program asks for this team" icon={Flag} subtitle="Mark this team's part done here" flush>
@@ -381,27 +449,5 @@ function ScopeTabs({ scopes, active }: { scopes: Scope[]; active: Scope }) {
       {group("subtrack", "Sub-tracks")}
       {group("platform", "Platforms")}
     </div>
-  );
-}
-
-function RaidList({ items, today, empty }: { items: ReturnType<typeof buildS0>["risks"]; today: string; empty: string }) {
-  if (!items.length) return <p className="p-5 text-sm text-muted">{empty}</p>;
-  return (
-    <ul className="divide-y divide-line">
-      {items.map((r) => (
-        <li key={r.key} className="flex items-start gap-3 px-5 py-3">
-          <ToneBadge tone={r.tier === 1 ? "critical" : r.tier === 2 ? "serious" : "neutral"}>{r.tier ? `Tier ${r.tier}` : "No tier"}</ToneBadge>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-fg">{r.summary}</div>
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-ink-2">
-              <KeyLink k={r.key} />
-              <span>{r.assignee ?? "no owner"}</span>
-              <DateCell date={r.dueDate} late={isLate(r, today)} />
-            </div>
-          </div>
-          <StatusPill issue={r} />
-        </li>
-      ))}
-    </ul>
   );
 }

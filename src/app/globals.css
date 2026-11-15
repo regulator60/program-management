@@ -130,6 +130,19 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Any remaining native form controls follow the theme too. */
+select,
+option,
+input,
+textarea {
+  color-scheme: inherit;
+}
+select,
+option {
+  background-color: var(--panel);
+  color: var(--foreground);
+}
+
 details > summary::-webkit-details-marker {
   display: none;
 }

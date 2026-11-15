@@ -30,6 +30,8 @@ export function seedDemo(db: DatabaseSync) {
     blocks?: string[];
     relates?: string[];
     scope?: boolean;
+    /** Days ago Jira last changed it (default: now). */
+    updated?: number;
   };
 
   const ST = {
@@ -84,15 +86,15 @@ export function seedDemo(db: DatabaseSync) {
     { key: "PLAT-7", type: "Epic", summary: "[Platform] Fraud scoring API for payees", status: "To Do", cat: "new", scope: false, blocks: ["BIGP-105"] },
     { key: "NDIG-20", type: "Epic", summary: "[Non-Digital] Call center scripts for MFA", status: "Done", cat: "done", start: -60, due: -5, scope: false, blocks: ["BIGP-31"] },
     // Risks (tier 3 = my track; 1–2 = multi-track)
-    { key: "BIGP-200", type: "Risk", summary: "MFA vendor SDK release may slip past MFA UI milestone", status: "Open", cat: "new", due: 14, labels: ["Tier-3", ST.auth, "Domain:iOS", "Domain:Android"], assignee: "Marcus Lee", relates: ["BIGP-31"] },
-    { key: "BIGP-201", type: "Risk", summary: "Not enough Android test devices for passkey QA", status: "Mitigating", cat: "indeterminate", due: 20, labels: ["Tier-3", ST.auth, "Domain:Android"], assignee: "Ana Gomez" },
-    { key: "BIGP-202", type: "Risk", summary: "View Account Balances API v3 timeline threatens Dashboard GA", status: "Open", cat: "new", due: 30, labels: ["Tier-2", ST.dash], assignee: "Track Lead", relates: ["VIEW-50", "BIGP-11"] },
-    { key: "BIGP-203", type: "Risk", summary: "Regulatory review of new login flow not yet scheduled", status: "Open", cat: "new", due: 21, labels: ["Tier-1"], assignee: "Program Office" },
+    { key: "BIGP-200", updated: 12, type: "Risk", summary: "MFA vendor SDK release may slip past MFA UI milestone", status: "Open", cat: "new", due: 14, labels: ["Tier-3", ST.auth, "Domain:iOS", "Domain:Android"], assignee: "Marcus Lee", relates: ["BIGP-31"] },
+    { key: "BIGP-201", updated: 9, type: "Risk", summary: "Not enough Android test devices for passkey QA", status: "Mitigating", cat: "indeterminate", due: 20, labels: ["Tier-3", ST.auth, "Domain:Android"], assignee: "Ana Gomez" },
+    { key: "BIGP-202", updated: 10, type: "Risk", summary: "View Account Balances API v3 timeline threatens Dashboard GA", status: "Open", cat: "new", due: 30, labels: ["Tier-2", ST.dash], assignee: "Track Lead", relates: ["VIEW-50", "BIGP-11"] },
+    { key: "BIGP-203", updated: 15, type: "Risk", summary: "Regulatory review of new login flow not yet scheduled", status: "Open", cat: "new", due: 21, labels: ["Tier-1"], assignee: "Program Office" },
     { key: "BIGP-204", type: "Risk", summary: "Payee data migration volume", status: "Closed", cat: "done", due: -15, labels: ["Tier-3", ST.pay] },
     // Decisions
     { key: "BIGP-210", type: "Decision", summary: "Use passkeys as primary factor for pilot", status: "Decided", cat: "done", due: -20, labels: ["Tier-3", ST.auth] },
-    { key: "BIGP-211", type: "Decision", summary: "Shared token format with View Account", status: "Open", cat: "new", due: 10, labels: ["Tier-2", ST.auth], assignee: "Priya Shah", relates: ["VIEW-60"] },
-    { key: "BIGP-212", type: "Decision", summary: "Cross-track launch sequencing (Digital vs Non-Digital)", status: "Open", cat: "new", due: 18, labels: ["Tier-1"], assignee: "Program Office" },
+    { key: "BIGP-211", updated: 11, type: "Decision", summary: "Shared token format with View Account", status: "Open", cat: "new", due: 10, labels: ["Tier-2", ST.auth], assignee: "Priya Shah", relates: ["VIEW-60"] },
+    { key: "BIGP-212", updated: 3, type: "Decision", summary: "Cross-track launch sequencing (Digital vs Non-Digital)", status: "Open", cat: "new", due: 18, labels: ["Tier-1"], assignee: "Program Office" },
     // Program action items from intake board
     { key: "BIGP-300", type: "Task", summary: "Send updated pilot timeline to program office", status: "To Do", cat: "new", due: 3, labels: ["intake"], assignee: "Track Lead" },
     { key: "BIGP-301", type: "Task", summary: "Confirm Android device budget with finance", status: "In Progress", cat: "indeterminate", due: -1, labels: ["intake", ST.auth], assignee: "Ana Gomez" },
@@ -135,7 +137,7 @@ export function seedDemo(db: DatabaseSync) {
         labels: s.labels ?? [],
         components: [],
         issuelinks: linksByKey.get(s.key) ?? [],
-        updated: syncedAt,
+        updated: s.updated === undefined ? syncedAt : new Date(Date.now() - s.updated * 86_400_000).toISOString(),
         description: null,
       },
     };
@@ -204,6 +206,13 @@ export function seedDemo(db: DatabaseSync) {
     if (a.parent === "jira:BIGP-300" && a.scope.name === "Login & Auth") updateAssignment(db, a.id, { status: "done", owner: "Priya Shah" });
     if (a.parent === `local:${local}` && a.scope.name === "Web") updateAssignment(db, a.id, { status: "done", owner: "Jordan Kim" });
   }
+
+  // S0 updates from last week's calls.
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+  const upd = db.prepare("INSERT INTO item_updates (key, body, progress, scope, created_at) VALUES (?, ?, ?, ?, ?)");
+  upd.run("BIGP-201", "2 of 4 devices arrived; rest waiting on finance sign-off.", "moving", "subtrack:Login & Auth", daysAgo(2));
+  upd.run("BIGP-212", "Program office hasn't scheduled the sequencing review; Non-Digital still waiting on their pilot plan.", "stalled", "subtrack:Login & Auth", daysAgo(3));
+  upd.run("BIGP-202", "Asked View Account for a recovery plan; no response yet.", "blocked", "subtrack:Dashboard", daysAgo(10));
 
   // A few team action items captured in calls, linked to the work they move forward.
   addActionItem(db, { text: "Get a committed date for fraud scoring API from Platform", owner: "Sam Patel", dueDate: d(-2), subTrack: "Payments", platform: "API", links: ["PLAT-7", "BIGP-105"] });

@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS program_assignments (
   UNIQUE (parent, scope_kind, scope_name)
 );
 
+-- Status updates captured in S0 calls (or anywhere) against a Jira item.
+CREATE TABLE IF NOT EXISTS item_updates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL,
+  body TEXT NOT NULL,
+  progress TEXT,            -- moving | stalled | blocked | resolved
+  scope TEXT,               -- "subtrack:Name" / "platform:Name" where it was captured
+  sent_to_jira INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_item_updates_key ON item_updates(key, created_at);
+
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL,

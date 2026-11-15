@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Select } from "./select";
 import type { DepHealth } from "@/lib/dependencies";
 import type { Severity } from "@/lib/insights";
 import type { Rag } from "@/lib/model";
@@ -409,14 +410,14 @@ export function Table({ children }: { children: ReactNode }) {
   );
 }
 
-/** Plain select of team names (sub-tracks or platforms) for forms. */
+/** Team picker (sub-tracks or platforms) for server-action forms. */
 export function TeamSelect({ name, options, placeholder, value }: { name: string; options: string[]; placeholder: string; value: string }) {
   return (
-    <select name={name} defaultValue={value} className={inputCls}>
-      <option value="">{placeholder}</option>
-      {options.map((o) => (
-        <option key={o}>{o}</option>
-      ))}
-    </select>
+    <Select
+      name={name}
+      aria-label={placeholder}
+      defaultValue={value}
+      options={[{ value: "", label: placeholder }, ...options.map((o) => ({ value: o, label: o }))]}
+    />
   );
 }
