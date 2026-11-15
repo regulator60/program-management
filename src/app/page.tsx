@@ -38,7 +38,7 @@ import {
 } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { flattenTree, isLate } from "@/lib/hierarchy";
-import { buildInsights, headline, type Insight } from "@/lib/insights";
+import { buildInsights, depHref, headline, type Insight } from "@/lib/insights";
 import { groupReport, loadModel, matchesFilter, parseFilter, type GroupReport } from "@/lib/model";
 import { listActionItems, recentSyncs } from "@/lib/store";
 
@@ -269,16 +269,18 @@ async function Overview({ searchParams }: { searchParams: PageProps<"/">["search
           ) : (
             <ul className="divide-y divide-line">
               {depWatch.map((d) => (
-                <li key={`${d.predecessor.key}-${d.successor.key}`} className="flex items-start gap-3 px-5 py-3">
-                  <HealthBadge health={d.health} />
-                  <div className="min-w-0 text-sm">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <KeyLink k={d.predecessor.key} external={!d.predecessor.inScope} />
-                      <ArrowRight className="h-3.5 w-3.5 text-muted" aria-label="needed by" />
-                      <KeyLink k={d.successor.key} external={!d.successor.inScope} />
+                <li key={`${d.predecessor.key}-${d.successor.key}`}>
+                  <Link href={depHref(d)} className="flex items-start gap-3 px-5 py-3 hover:bg-panel-2">
+                    <HealthBadge health={d.health} />
+                    <div className="min-w-0 text-sm">
+                      <div className="flex flex-wrap items-center gap-1.5 font-mono text-xs">
+                        <span className={d.predecessor.inScope ? "text-accent" : "text-muted"}>{d.predecessor.key}</span>
+                        <ArrowRight className="h-3.5 w-3.5 text-muted" aria-label="needed by" />
+                        <span className={d.successor.inScope ? "text-accent" : "text-muted"}>{d.successor.key}</span>
+                      </div>
+                      <div className="mt-0.5 text-xs text-ink-2">{d.reason}</div>
                     </div>
-                    <div className="mt-0.5 text-xs text-ink-2">{d.reason}</div>
-                  </div>
+                  </Link>
                 </li>
               ))}
             </ul>

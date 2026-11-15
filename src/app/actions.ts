@@ -124,7 +124,7 @@ export async function clearDataAction() {
 
 export async function stageEditsAction(fd: FormData) {
   const key = str(fd, "key");
-  const back = `/items/${encodeURIComponent(key)}`;
+  const back = str(fd, "back") || `/items/${encodeURIComponent(key)}`;
   await attempt(back, () => {
     const db = getDb();
     for (const field of EDITABLE_FIELDS) {
@@ -306,7 +306,10 @@ export async function addItemUpdateAction(fd: FormData) {
     const body = str(fd, "body");
     const progress = str(fd, "progress") as UpdateProgress | "";
     if (!body && !progress) throw new Error("Write an update or pick whether it's moving.");
-    if (!getIssue(db, key)) throw new Error(`Unknown issue ${key}.`);
+    // A dependency update is stored as "dep:PRED:SUCC"; its Jira comment goes on `commentKey`.
+    const dep = key.match(/^dep:([^:]+):([^:]+)$/);
+    if (dep ? !getIssue(db, dep[1]) || !getIssue(db, dep[2]) : !getIssue(db, key)) throw new Error(`Unknown item ${key}.`);
+    const commentKey = str(fd, "commentKey") || (dep ? dep[2] : key);
     const toJira = fd.get("toJira") === "on";
     const label = progress ? PROGRESS_LABEL[progress] : "";
     addItemUpdate(db, { key, body: body || label, progress: progress || null, scope: str(fd, "scope") || null, sentToJira: toJira });
@@ -314,12 +317,13 @@ export async function addItemUpdateAction(fd: FormData) {
       const where = parseScope(str(fd, "scope"));
       stageEdit(
         db,
-        key,
+        commentKey,
         "comment",
-        `S0 update${where ? ` (${where.name})` : ""}, ${new Date().toISOString().slice(0, 10)}${label ? ` [${label}]` : ""}: ${body || label}`,
+        `${dep ? `Dependency ${dep[1]} → ${dep[2]} update` : "S0 update"}${where ? ` (${where.name})` : ""}, ${new Date().toISOString().slice(0, 10)}${label ? ` [${label}]` : ""}: ${body || label}`,
       );
     }
-    return `Update saved for ${key}${toJira ? " and staged as a Jira comment" : ""}.`;
+    const what = dep ? `${dep[1]} → ${dep[2]}` : key;
+    return `Update saved for ${what}${toJira ? ` and staged as a Jira comment on ${commentKey}` : ""}.`;
   });
 }
 

@@ -8,6 +8,7 @@ import {
   Link2,
   ListChecks,
   MessageSquareText,
+  NotebookPen,
   Plus,
   Scale,
   ShieldAlert,
@@ -41,11 +42,13 @@ import {
 } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { flattenTree, isLate } from "@/lib/hierarchy";
-import { headline } from "@/lib/insights";
+import { depHref, headline } from "@/lib/insights";
 import { loadModel } from "@/lib/model";
 import { allScopes, listProgramActions } from "@/lib/programActions";
 import { buildS0, type AgendaItem } from "@/lib/s0";
-import { listActionItems, listItemUpdates } from "@/lib/store";
+import { listActionItems, listAssignments, listItemUpdates, listNotes } from "@/lib/store";
+import { Combobox, MultiCombobox } from "@/components/combobox";
+import { issueOptions, peopleOptions } from "@/lib/options";
 import { LastUpdate, UpdateComposer } from "@/components/updates";
 import { parseScope, scopeId, type Scope } from "@/lib/types";
 
@@ -87,7 +90,13 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
   }
   const scope: Scope = parseScope(requested) ?? scopes[0];
   const actions = listActionItems(db);
-  const s0 = buildS0(m, scope, { actions, programs: listProgramActions(db, m, actions), updates: listItemUpdates(db) });
+  const s0 = buildS0(m, scope, {
+    actions,
+    programs: listProgramActions(db, m, actions),
+    updates: listItemUpdates(db),
+    notes: listNotes(db),
+  });
+  const people = peopleOptions(m, actions, listAssignments(db));
   const scopeKey = scopeId(scope);
   const back = s0Href(scope);
   const nodes = new Map(flattenTree(m.tree).map((n) => [n.issue.key, n]));
@@ -151,6 +160,7 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium text-fg">{a.title}</div>
                           <div className="mt-0.5 text-sm italic text-ink-2">{a.question}</div>
+                          {a.basis && <div className="mt-0.5 text-[11px] text-muted">Based on: {a.basis}</div>}
                         </div>
                         <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted opacity-0 group-hover:opacity-100" aria-hidden />
                       </Link>
@@ -169,10 +179,10 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
               <input type="hidden" name={scope.kind === "subtrack" ? "subTrack" : "platform"} value={scope.name} />
               <input name="text" required placeholder="e.g. Ask View Account to confirm VIEW-50 date" className={inputCls} />
               <div className="grid grid-cols-2 gap-2">
-                <input name="owner" placeholder="Owner" className={inputCls} />
+                <Combobox name="owner" options={people} placeholder="Owner" />
                 <input name="dueDate" type="date" className={inputCls} />
               </div>
-              <input name="links" placeholder="Link to (optional): BIGP-31 VIEW-50" className={inputCls + " font-mono"} />
+              <MultiCombobox name="links" options={issueOptions(m)} placeholder="Link to milestones, dependencies, risks… (optional)" />
               <div><Button type="submit">Add action</Button></div>
             </form>
           </Card>
@@ -252,7 +262,7 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
                         {incoming ? "We wait on" : "Waits on us"} <KeyLink k={other.key} external={!other.inScope} />
                         <span>for</span> <KeyLink k={mine.key} />
                       </div>
-                      <div className="font-medium text-fg">{other.summary}</div>
+                      <Link href={depHref(d)} className="font-medium text-fg hover:text-accent hover:underline">{other.summary}</Link>
                       <div className="mt-0.5 text-xs text-ink-2">{d.reason}</div>
                       <LastUpdate u={s0.latestUpdate.get(other.key)} today={m.today} />
                       <UpdateComposer issueKey={other.key} scope={scopeKey} back={back} label={`Add update on ${other.key}`} />
@@ -305,6 +315,34 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
                       ))}
                     </div>
                     <p className="mt-2 text-sm italic text-ink-2">Ask: {t.question}</p>
+                    {t.basis && <p className="text-[11px] text-muted">Based on: {t.basis}</p>}
+                    {(t.context.actions.some((a) => a.status === "open") || t.context.mentions.length > 0) && (
+                      <ul className="mt-2 grid gap-1 text-xs text-ink-2">
+                        {t.context.actions
+                          .filter((a) => a.status === "open")
+                          .slice(0, 3)
+                          .map((a) => (
+                            <li key={a.id} className="flex items-center gap-1.5">
+                              <ListChecks className="h-3.5 w-3.5 shrink-0 text-muted" aria-label="Action item" />
+                              <span className="truncate">{a.text}</span>
+                              <span className="shrink-0 text-muted">
+                                · {a.owner ?? "no owner"}
+                                {a.dueDate && ` · due ${fmtDate(a.dueDate, false)}`}
+                              </span>
+                              {a.dueDate && a.dueDate < m.today && <ToneBadge tone="critical">Overdue</ToneBadge>}
+                            </li>
+                          ))}
+                        {t.context.mentions.slice(0, 1).map((n) => (
+                          <li key={`${n.noteId}-${n.line}`} className="flex items-center gap-1.5">
+                            <NotebookPen className="h-3.5 w-3.5 shrink-0 text-muted" aria-label="Meeting notes" />
+                            <span className="truncate">&ldquo;{n.line}&rdquo;</span>
+                            <Link href={`/notes#note-${n.noteId}`} className="shrink-0 text-muted hover:underline">
+                              {n.title}, {fmtDate(n.date, false)}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     <LastUpdate u={t.lastUpdate} today={m.today} />
                     <UpdateComposer issueKey={t.issue.key} scope={scopeKey} back={`${back}#raid-${t.issue.key}`} />
                   </div>

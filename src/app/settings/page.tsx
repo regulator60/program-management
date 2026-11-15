@@ -20,6 +20,9 @@ import { Button, Card, PageHeader, cx, inputCls } from "@/components/ui";
 import { getConfig, type AppConfig } from "@/lib/config";
 import { getDb } from "@/lib/db";
 import { jiraAuthHeader } from "@/lib/jira/client";
+import { loadModel } from "@/lib/model";
+import { issueTypeOptions, labelOptions, statusOptions } from "@/lib/options";
+import { Combobox, MultiCombobox } from "@/components/combobox";
 
 export const metadata = { title: "Settings" };
 
@@ -38,6 +41,8 @@ type Field = {
   type: "text" | "num" | "list" | "textarea";
   placeholder?: string;
   mono?: boolean;
+  /** Offer known values from your Jira data (you can still type new ones). */
+  options?: "issueTypes" | "labels" | "statuses";
 };
 
 type Section = {
@@ -67,7 +72,7 @@ const SECTIONS: Section[] = [
       { path: "jira.intakeJql", label: "Program action items (JQL)", help: "The intake board. Leave empty to skip.", type: "textarea", mono: true },
       { path: "jira.pageSize", label: "Page size", help: "Issues per search request.", type: "num" },
       { path: "jira.writeDelayMs", label: "Pause between REST writes (ms)", help: "Jira Server can be touchy with bursts of writes.", type: "num" },
-      { path: "jira.doneStatus", label: "Done status", help: "Status used when closing a program action item every team finished.", type: "text", placeholder: "Done" },
+      { path: "jira.doneStatus", options: "statuses", label: "Done status", help: "Status used when closing a program action item every team finished.", type: "text", placeholder: "Done" },
     ],
   },
   {
@@ -81,15 +86,15 @@ const SECTIONS: Section[] = [
     id: "types",
     title: "Issue types",
     icon: Layers,
-    description: "The exact Jira issue type names for each level of the plan. Separate several names with commas.",
+    description: "The exact Jira issue type names for each level of the plan. Pick from the types in your data, or type a new one.",
     fields: [
-      { path: "issueTypes.outcome", label: "Outcomes", type: "list" },
-      { path: "issueTypes.cpm", label: "Critical path milestones", type: "list" },
-      { path: "issueTypes.ipm", label: "Interim milestones", help: "Interim milestones with the Intent label (see Labels & links) become intent milestones.", type: "list" },
-      { path: "issueTypes.epic", label: "Epics", type: "list" },
-      { path: "issueTypes.risk", label: "Risks", type: "list" },
-      { path: "issueTypes.decision", label: "Decisions", type: "list" },
-      { path: "issueTypes.action", label: "Action items", help: "Issue type used when exporting new action items for Jira import.", type: "list" },
+      { path: "issueTypes.outcome", options: "issueTypes", label: "Outcomes", type: "list" },
+      { path: "issueTypes.cpm", options: "issueTypes", label: "Critical path milestones", type: "list" },
+      { path: "issueTypes.ipm", options: "issueTypes", label: "Interim milestones", help: "Interim milestones with the Intent label (see Labels & links) become intent milestones.", type: "list" },
+      { path: "issueTypes.epic", options: "issueTypes", label: "Epics", type: "list" },
+      { path: "issueTypes.risk", options: "issueTypes", label: "Risks", type: "list" },
+      { path: "issueTypes.decision", options: "issueTypes", label: "Decisions", type: "list" },
+      { path: "issueTypes.action", options: "issueTypes", label: "Action items", help: "Issue type used when exporting new action items for Jira import.", type: "list" },
     ],
   },
   {
@@ -113,8 +118,8 @@ const SECTIONS: Section[] = [
     icon: Tags,
     description: "Your Jira label conventions, and the link type that builds the plan hierarchy.",
     fields: [
-      { path: "labels.intent", label: "Intent label", help: "Marks interim milestones that are intent milestones.", type: "text" },
-      { path: "labels.intake", label: "Intake label", help: "Marks program action items.", type: "text" },
+      { path: "labels.intent", options: "labels", label: "Intent label", help: "Marks interim milestones that are intent milestones.", type: "text" },
+      { path: "labels.intake", options: "labels", label: "Intake label", help: "Marks program action items.", type: "text" },
       { path: "labels.platformPrefix", label: "Platform label prefix", help: 'For example "Domain:" turns Domain:iOS into platform iOS.', type: "text", mono: true },
       { path: "labels.subTrackPrefix", label: "Sub-track label prefix", type: "text", mono: true },
       { path: "labels.tierPattern", label: "Tier label pattern", help: "Regular expression with one capture group for the tier number.", type: "text", mono: true },
@@ -145,7 +150,10 @@ function getPath(cfg: AppConfig, path: string): unknown {
 async function Settings({ searchParams }: { searchParams: PageProps<"/settings">["searchParams"] }) {
   await connection();
   const sp = await searchParams;
-  const cfg = getConfig(getDb());
+  const db = getDb();
+  const cfg = getConfig(db);
+  const m = loadModel(db);
+  const known = { issueTypes: issueTypeOptions(m), labels: labelOptions(m), statuses: statusOptions(m) };
   const active = SECTIONS.find((s) => s.id === sp.section) ?? SECTIONS[0];
 
   return (
@@ -190,7 +198,11 @@ async function Settings({ searchParams }: { searchParams: PageProps<"/settings">
                         </label>
                         {f.help && <p className="mt-0.5 text-xs text-muted">{f.help}</p>}
                       </div>
-                      {f.type === "textarea" ? (
+                      {f.options && f.type === "list" ? (
+                        <MultiCombobox name={name} options={known[f.options]} defaultValues={Array.isArray(v) ? (v as string[]) : []} placeholder="Add…" aria-label={f.label} />
+                      ) : f.options ? (
+                        <Combobox name={name} options={known[f.options]} defaultValue={value} placeholder={f.placeholder ?? "Choose or type…"} aria-label={f.label} />
+                      ) : f.type === "textarea" ? (
                         <textarea id={id} name={name} defaultValue={value} rows={3} className={cx(inputCls, f.mono && "font-mono text-xs")} />
                       ) : (
                         <input
