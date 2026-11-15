@@ -90,6 +90,30 @@ CREATE TABLE IF NOT EXISTS action_items (
   created_at TEXT NOT NULL
 );
 
+-- Jira items an action item helps move forward (milestones, dependencies, risks...).
+CREATE TABLE IF NOT EXISTS action_links (
+  action_id INTEGER NOT NULL REFERENCES action_items(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  PRIMARY KEY (action_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_action_links_key ON action_links(key);
+
+-- A program action item (Jira intake issue "jira:KEY" or local "local:ID")
+-- assigned to a sub-track or platform, which completes its part independently.
+CREATE TABLE IF NOT EXISTS program_assignments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent TEXT NOT NULL,
+  scope_kind TEXT NOT NULL,
+  scope_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  owner TEXT,
+  due_date TEXT,
+  note TEXT,
+  done_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (parent, scope_kind, scope_name)
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL,
@@ -107,6 +131,10 @@ const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: "notes", column: "attachment_path", ddl: "ALTER TABLE notes ADD COLUMN attachment_path TEXT" },
   { table: "notes", column: "sub_track", ddl: "ALTER TABLE notes ADD COLUMN sub_track TEXT" },
   { table: "notes", column: "updated_at", ddl: "ALTER TABLE notes ADD COLUMN updated_at TEXT" },
+  { table: "notes", column: "platform", ddl: "ALTER TABLE notes ADD COLUMN platform TEXT" },
+  { table: "action_items", column: "platform", ddl: "ALTER TABLE action_items ADD COLUMN platform TEXT" },
+  // "team": small action from notes / a call. "program": a high-level ask assigned out to teams.
+  { table: "action_items", column: "kind", ddl: "ALTER TABLE action_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'team'" },
 ];
 
 function migrate(db: DatabaseSync) {

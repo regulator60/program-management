@@ -21,6 +21,8 @@ export type Insight = {
   threatens?: { key: string; summary: string };
   /** Sort hint within a severity: bigger = more urgent. */
   weight: number;
+  /** A question to put to the team in a weekly (S0) call. */
+  question?: string;
 };
 
 const DAY = 86_400_000;
@@ -80,6 +82,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         key: i.key,
         threatens: isCpm ? undefined : (() => { const c = up(i.key).cpm; return c ? { key: c.key, summary: c.summary } : undefined; })(),
         weight: d + (isCpm ? 1000 : 0),
+        question: `What's the recovery date for ${i.key}, what's blocking it, and who owns the plan?`,
       });
     } else if (i.statusCategory !== "done" && n.rollup.latestChildDue && i.dueDate && n.rollup.latestChildDue > i.dueDate) {
       const d = days(i.dueDate, n.rollup.latestChildDue);
@@ -92,6 +95,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         href: `/hierarchy`,
         key: i.key,
         weight: d + (isCpm ? 500 : 0),
+        question: `Do we re-plan the work under ${i.key}, add capacity, or move the milestone date?`,
       });
     }
   }
@@ -118,6 +122,10 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         key: mine.key,
         threatens,
         weight: (d.slipDays ?? 0) + (threatens ? 200 : 0),
+        question:
+          d.direction === "outgoing"
+            ? `Can we deliver ${mine.key} sooner, or agree a new need-by date with the ${other.key} team?`
+            : `Can ${d.predecessor.key} pull in, or do we re-sequence ${d.successor.key}? Who escalates to the other track, and by when?`,
       });
     } else if (d.health === "overdue") {
       out.push({
@@ -130,6 +138,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         key: mine.key,
         threatens,
         weight: days(d.predecessor.dueDate!, today),
+        question: `What's the new ETA for ${d.predecessor.key}, and who is chasing it?`,
       });
     } else if (d.health === "unknown" && d.direction === "incoming") {
       out.push({
@@ -142,6 +151,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         key: mine.key,
         threatens,
         weight: 1,
+        question: `Who will get a committed date for ${d.predecessor.key} from the owning team, and by when?`,
       });
     }
     // Other teams moving dates on us
@@ -159,6 +169,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         key: c.key,
         threatens,
         weight: by,
+        question: `What does the ${c.key} slip mean for ${d.successor.key}? Do we need to re-plan or escalate?`,
       });
     }
   }
@@ -177,6 +188,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         href: `/raid`,
         key: i.key,
         weight: (3 - (i.tier ?? 3)) * 10 + (due !== null && due < 0 ? -due : 0),
+        question: "Is the mitigation on track? What help do we need, and from whom?",
       });
     }
     if (i.level === "decision" && i.dueDate) {
@@ -191,6 +203,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
           href: `/raid`,
           key: i.key,
           weight: -due,
+          question: "Who makes this decision and by when? What do they need from us?",
         });
       }
     }
@@ -209,6 +222,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
       detail: [...overdueIntake.map((i) => i.summary), ...overdueLocal.map((a) => a.text)].slice(0, 3).join(" · "),
       href: "/actions",
       weight: overdue,
+      question: "Close out or re-date each overdue action.",
     });
   }
 
@@ -225,6 +239,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
       detail: undated.slice(0, 5).map((i) => i.key).join(", "),
       href: "/hierarchy",
       weight: undated.length,
+      question: "Who will add dates to these items before next week?",
     });
   }
 

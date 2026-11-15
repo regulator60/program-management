@@ -145,6 +145,17 @@ export function groupReport(m: Model, name: string, f: Filter): GroupReport {
   if (r.deps.conflict) r.ragReasons.push(`${r.deps.conflict} dependency date conflict(s)`);
   if (r.ragReasons.length) r.rag = "red";
   const amber: string[] = [];
+  const overruns = flattenTree(m.tree).filter(
+    (n) =>
+      ["cpm", "ipm_intent", "ipm"].includes(n.issue.level) &&
+      n.issue.inScope &&
+      n.issue.statusCategory !== "done" &&
+      matchesFilter(m, n.issue.key, f) &&
+      !!n.rollup.latestChildDue &&
+      !!n.issue.dueDate &&
+      n.rollup.latestChildDue > n.issue.dueDate,
+  ).length;
+  if (overruns) amber.push(`${overruns} milestone plan(s) run past the due date`);
   if (r.items.late) amber.push(`${r.items.late} item(s) past due`);
   if (r.deps.overdue) amber.push(`${r.deps.overdue} overdue dependency(ies)`);
   if (r.deps.tight) amber.push(`${r.deps.tight} tight dependency(ies)`);

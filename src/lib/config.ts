@@ -20,6 +20,8 @@ export type AppConfig = {
     pageSize: number;
     /** Delay between write calls when pushing via REST (ms) — Jira Server is touchy. */
     writeDelayMs: number;
+    /** Status to move a program action item to when every assigned team is done. */
+    doneStatus: string;
   };
   confluence: {
     baseUrl: string;
@@ -77,6 +79,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     intakeJql: "project = BIGP AND labels = intake",
     pageSize: 100,
     writeDelayMs: 750,
+    doneStatus: "Done",
   },
   confluence: { baseUrl: "" },
   issueTypes: {

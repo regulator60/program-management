@@ -127,7 +127,7 @@ describe("demo model", () => {
   });
 
   test("notes produced action items", () => {
-    const items = listActionItems(db);
+    const items = listActionItems(db).filter((i) => i.noteId !== null);
     expect(items.length).toBe(6);
     expect(items.find((i) => i.text.startsWith("Priya"))?.owner).toBe("Priya");
   });
