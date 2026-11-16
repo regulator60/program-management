@@ -17,8 +17,8 @@ Outcome
 
 | Page | What it shows |
 | --- | --- |
-| **Executive overview** | Overall status with a generated summary; KPI tiles; **What needs attention**, a ranked list of late milestones, plans that overrun, dependency conflicts traced to the critical path milestone they threaten, date slips by other tracks, tier 1/2 risks, due decisions and overdue actions; a 120-day milestone roadmap; and status cards by sub-track or platform. Prints cleanly to PDF. |
-| **S0 weekly review** | One page per sub-track and per platform for the weekly call with the people doing the work and the track leads. It has a generated **agenda** (wins; issues to discuss, each with a question to put to the team; **risks & decisions to review**; program asks; overdue actions; dates that moved), what changed this week, upcoming milestones, dependencies (what we wait on, who waits on us), risks, decisions, that team's program asks with one-click "done", its action items, and quick capture of new actions. A risk or decision is raised for review when there's no update in N days (Settings → Analysis), it was last marked blocked or stalled, its date is past or within 14 days, or it has no owner. Capture an **update** (Moving / Stalled / Blocked / Resolved plus a note) right on the page, optionally staged as a Jira comment. Updates also show on each item's page. Printable. |
+| **Executive overview** | Overall status with a one-sentence summary that names what is threatened and why; KPI tiles; a **briefing** (see below); critical path milestones; a 120-day milestone roadmap; status cards by sub-track or platform; dependency watch; and tier 1–2 risks and decisions. Prints cleanly to PDF. |
+| **S0 weekly review** | One page per sub-track and per platform for the weekly call with the people doing the work and the track leads. It opens with that team's **briefing**, then a generated **agenda** (wins; issues to discuss, each with a question to put to the team; **risks & decisions to review**; program asks; overdue actions; dates that moved), what changed this week, upcoming milestones, dependencies (what we wait on, who waits on us), risks, decisions, that team's program asks with one-click "done", its action items, and quick capture of new actions. A risk or decision is raised for review when there's no update in N days (Settings → Analysis), it was last marked blocked or stalled, its date is past or within 14 days, or it has no owner. Capture an **update** (Moving / Stalled / Blocked / Resolved plus a note) right on the page, optionally staged as a Jira comment. Updates also show on each item's page. Printable. |
 | **Plan hierarchy** | The collapsible tree. Each node shows its rolled-up progress. `OVERRUN` means child work finishes after the parent is due. `DEP×n` means the item has dependency conflicts. |
 | **Gantt** | Milestones are diamonds, work is bars. Arrows show dependencies, and linked items from other tracks appear in their own section. |
 | **Dependencies** | Every blocks / depends-on link touching your items, graded *conflict / overdue / tight / no date / ok / done*. It also lists which linked items **changed dates** recently. Each dependency has **its own page** (`/dependencies/<from>/<to>`), opened from anywhere a dependency is shown. It has both sides with dates, owners and teams; an **Ask next** question grounded in your records; updates on the dependency (optionally staged as a Jira comment on your side); meeting-note lines that mention it; date history; the milestone and outcome it puts at risk; and its action items, with a form to add more. You can also stage date changes on either side. |
@@ -57,6 +57,16 @@ npm run desktop:install      # macOS, Linux or Windows
 ```
 
 Each new commit on `main` is built and tested on the side before it replaces the running version. If anything fails, the old version keeps running. Details are in [`docs/DESKTOP.md`](docs/DESKTOP.md).
+
+### Briefings
+
+The executive overview and each S0 page start with a briefing in three columns. Each item names the work, the people and the dates, and says what is on record about it:
+
+- **Needs attention:** what threatens the plan, and why. This covers dependency conflicts and overdue dependencies, grouped by the critical path milestone they put at risk; late milestones; plans whose child work finishes after the parent is due; and dates we're late on for other tracks. Example: "Account dashboard GA (BIGP-11, due Mar 16) is at risk from a cross-track dependency. View Account's Balances API v3 (VIEW-50) lands Jan 25, 30 days after Accounts aggregation API (BIGP-103) needs it (Dec 26). It moved out 25 days on Nov 14. Jordan Kim is working on it: 'Draft re-plan options…' (due Nov 21)."
+- **Needs help:** what is stuck, unowned or overdue. This covers items last marked blocked or stalled, dependencies with no committed date, decisions due within 14 days, tier 1–2 risks with no recent update, and overdue actions and program asks.
+- **Moving forward:** milestones completed in the last two weeks, dependency dates that were pulled in, and updates marked moving or resolved.
+
+When nothing is on record for a threat, the briefing says so ("No action item or update on record yet"), so the gap is visible in the call. In a sub-track or platform view, a team is only flagged for its own work.
 
 ### Smart questions
 
@@ -134,7 +144,8 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/lib/hierarchy.ts`: builds the tree and roll-ups
 - `src/lib/dependencies.ts`: predecessor/successor analysis
 - `src/lib/model.ts`: loads everything and produces the executive roll-up
-- `src/lib/insights.ts`: ranks what needs attention and writes the summary
+- `src/lib/insights.ts`: ranks what needs attention
+- `src/lib/brief.ts`, `src/components/Briefing.tsx`: the briefing call-outs and status summary
 - `src/components/ui.tsx`, `src/components/select.tsx`, `src/app/globals.css`: design system (tokens, badges, tables, cards; Radix UI dropdowns)
 - `src/lib/s0.ts`: S0 agenda and risk/decision review topics
 - `src/lib/context.ts`: per-item context (actions, note mentions, updates) and grounded questions

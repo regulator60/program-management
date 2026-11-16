@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  ArrowUpRight,
   CalendarClock,
   Flag,
   Gauge,
@@ -24,8 +23,6 @@ import {
   PageHeader,
   Progress,
   RagBadge,
-  SEVERITY_LABEL,
-  SeverityIcon,
   Stat,
   StatusPill,
   Table,
@@ -38,9 +35,12 @@ import {
 } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { flattenTree, isLate } from "@/lib/hierarchy";
-import { buildInsights, depHref, headline, type Insight } from "@/lib/insights";
+import { buildBrief } from "@/lib/brief";
+import { buildInsights, depHref } from "@/lib/insights";
+import { listProgramActions } from "@/lib/programActions";
+import { Briefing } from "@/components/Briefing";
 import { groupReport, loadModel, matchesFilter, parseFilter, type GroupReport } from "@/lib/model";
-import { listActionItems, recentSyncs } from "@/lib/store";
+import { listActionItems, listItemUpdates, listNotes, recentSyncs } from "@/lib/store";
 
 export const metadata = { title: "Executive overview" };
 
@@ -93,7 +93,12 @@ async function Overview({ searchParams }: { searchParams: PageProps<"/">["search
   const actionItems = listActionItems(db);
   const overall = groupReport(m, "Overall", f);
   const insights = buildInsights(m, f, actionItems);
-  const summary = headline(insights, overall.rag, `The ${m.cfg.trackName} track`);
+  const brief = buildBrief(
+    m,
+    f,
+    { actions: actionItems, notes: listNotes(db), updates: listItemUpdates(db), programs: listProgramActions(db, m, actionItems) },
+    { rag: overall.rag, subject: `the ${m.cfg.trackName} track` },
+  );
   const groups =
     by === "platform"
       ? m.platforms.filter((p) => !f.platform || p === f.platform).map((p) => groupReport(m, p, { ...f, platform: p }))
@@ -161,7 +166,7 @@ async function Overview({ searchParams }: { searchParams: PageProps<"/">["search
             <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-fg">
               Overall status: <span className="whitespace-nowrap">{overall.rag === "green" ? "on track" : overall.rag === "amber" ? "at risk" : "off track"}</span>
             </h1>
-            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">{summary}</p>
+            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">{brief.summary}</p>
             <p className="mt-3 text-xs text-muted">
               As of {fmtDate(m.today)}
               {lastSync && <> · data last loaded {fmtDate(lastSync.finished_at?.slice(0, 10))} from {lastSync.source}</>}
@@ -190,8 +195,11 @@ async function Overview({ searchParams }: { searchParams: PageProps<"/">["search
         <Stat label="Open action items" value={openActions} icon={ListChecks} tone={overdueActions ? "amber" : undefined} hint={overdueActions ? `${overdueActions} overdue` : "None overdue"} href="/actions" />
       </div>
 
-      <div className="mb-6 grid gap-6 xl:grid-cols-[1.35fr_1fr]">
-        <InsightsCard insights={insights} />
+      <div className="mb-6">
+        <Briefing brief={brief} title="What leadership should know" />
+      </div>
+
+      <div className="mb-6">
         <Card title="Critical path milestones" icon={Gauge} subtitle="Progress of everything planned under each milestone" flush>
           <Table>
             <thead>
@@ -317,58 +325,6 @@ async function Overview({ searchParams }: { searchParams: PageProps<"/">["search
         </Card>
       </div>
     </>
-  );
-}
-
-function InsightsCard({ insights }: { insights: Insight[] }) {
-  const top = insights.filter((i) => i.severity !== "good").slice(0, 7);
-  const rest = insights.filter((i) => i.severity !== "good").slice(7);
-  const wins = insights.filter((i) => i.severity === "good");
-  const Row = ({ i }: { i: Insight }) => (
-    <li>
-      <Link href={i.href} className="group flex items-start gap-3 px-5 py-3 transition hover:bg-panel-2">
-        <SeverityIcon severity={i.severity} className="mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-fg">{i.title}</div>
-          <div className="mt-0.5 line-clamp-2 text-xs text-ink-2">{i.detail}</div>
-          {i.threatens && i.severity !== "good" && (
-            <div className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-critical-soft px-1.5 py-0.5 text-[11px] font-medium text-critical-ink">
-              <Flag className="h-3 w-3" aria-hidden /> Threatens {i.threatens.key}
-            </div>
-          )}
-        </div>
-        <span className="mt-0.5 hidden text-[11px] font-semibold uppercase tracking-wide text-muted sm:inline">{SEVERITY_LABEL[i.severity]}</span>
-        <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-muted opacity-0 transition group-hover:opacity-100" aria-hidden />
-      </Link>
-    </li>
-  );
-  return (
-    <Card title="What needs attention" icon={Sparkles} subtitle="Ranked automatically from dates, dependencies, risks and actions" flush>
-      {top.length === 0 ? (
-        <p className="p-5 text-sm text-muted">Nothing needs attention right now.</p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {top.map((i) => (
-            <Row key={i.id} i={i} />
-          ))}
-        </ul>
-      )}
-      {rest.length > 0 && (
-        <details className="border-t border-line">
-          <summary className="cursor-pointer px-5 py-2.5 text-xs font-medium text-accent hover:bg-panel-2">Show {rest.length} more</summary>
-          <ul className="divide-y divide-line border-t border-line">
-            {rest.map((i) => (
-              <Row key={i.id} i={i} />
-            ))}
-          </ul>
-        </details>
-      )}
-      {wins.length > 0 && (
-        <div className="border-t border-line px-5 py-3 text-xs text-ink-2">
-          <span className="font-semibold text-good-ink">Recently completed:</span> {wins.map((w) => w.key).join(", ")}
-        </div>
-      )}
-    </Card>
   );
 }
 
