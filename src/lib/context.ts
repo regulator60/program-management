@@ -30,12 +30,22 @@ export function itemContext(keys: string[], data: ContextData, today: string, ex
       return rank(a) - rank(b) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || b.id - a.id;
     });
   const mentions: ItemContext["mentions"] = [];
+  const keySet = new Set(keys);
   for (const n of data.notes) {
+    const date = n.meetingDate ?? n.createdAt.slice(0, 10);
+    const lines = new Set<string>();
+    // Lines that name the item (found at import, by key or by name) …
+    for (const r of n.refs ?? []) if (r.kind === "auto" && r.line && keySet.has(r.key)) lines.add(r.line);
+    // … plus any line with the key, for notes imported before names were matched.
     for (const raw of n.body.split(/\r?\n/)) {
       const line = raw.replace(/^\s*(?:[-*•]|\d+[.)]|\[[ x]\])\s*/i, "").trim();
-      if (line && mentionsKey(line)) {
-        mentions.push({ noteId: n.id, title: n.title, date: n.meetingDate ?? n.createdAt.slice(0, 10), line });
-      }
+      if (line && mentionsKey(line)) lines.add(line);
+    }
+    const excluded = (n.refs ?? []).some((r) => r.kind === "excluded" && keySet.has(r.key));
+    if (excluded) continue;
+    for (const line of lines) mentions.push({ noteId: n.id, title: n.title, date, line });
+    if (!lines.size && (n.refs ?? []).some((r) => r.kind === "manual" && keySet.has(r.key))) {
+      mentions.push({ noteId: n.id, title: n.title, date, line: "Linked to these meeting notes." });
     }
   }
   mentions.sort((a, b) => b.date.localeCompare(a.date));

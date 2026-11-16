@@ -127,8 +127,9 @@ describe("demo model", () => {
   });
 
   test("notes produced action items", () => {
-    const items = listActionItems(db).filter((i) => i.noteId !== null);
+    const items = listActionItems(db).filter((i) => i.noteId === 1);
     expect(items.length).toBe(6);
+    expect(listActionItems(db).filter((i) => i.noteId === 2).length).toBe(2); // the running notes doc
     expect(items.find((i) => i.text.startsWith("Priya"))?.owner).toBe("Priya");
   });
 });

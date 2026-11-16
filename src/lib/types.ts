@@ -149,7 +149,13 @@ export type Note = {
   platform: string | null;
   createdAt: string;
   updatedAt: string | null;
+  /** Fingerprint of the note text, used to spot the same notes uploaded twice. */
+  contentHash?: string | null;
+  /** Jira items the note is about (see note_refs). Filled by listNotes. */
+  refs?: NoteRef[];
 };
+
+export type NoteRef = { key: string; line: string | null; kind: "auto" | "manual" | "excluded" };
 
 export type ActionItem = {
   id: number;

@@ -7,10 +7,18 @@ import { toIsoDate } from "./jira/classify";
 import { JiraClient } from "./jira/client";
 import { normalizeIssue } from "./jira/normalize";
 import { loadModel } from "./model";
+import { createHash } from "node:crypto";
+import { buildItemMatcher, contentLines, meetingDates, noteSections, normText } from "./noteMatch";
 import { confluenceStorageToText, extractActionItems, normaliseActionText } from "./notes";
+import type { Note } from "./types";
 import {
   addActionItem,
   addNote,
+  addNoteLinks,
+  listNotes,
+  logNoteImport,
+  setAutoNoteRefs,
+  setNoteHash,
   ensureAutoAssignments,
   findNoteBySource,
   getNote,
@@ -114,34 +122,122 @@ export async function importConfluencePage(db: DatabaseSync, input: string, cfg:
   }
 }
 
+export type NoteImportResult = {
+  noteId: number;
+  /** created: new note. updated: an existing note grew (running doc, newer copy). duplicate: already had it. unchanged: same source, same text. */
+  status: "created" | "updated" | "duplicate" | "unchanged";
+  title: string;
+  actions: number;
+  found: number;
+  /** Kept for older callers: true unless a new note was created. */
+  updated: boolean;
+};
+
+/** Fingerprint of a note's text that ignores case, spacing and bullet styles. */
+export function noteHash(body: string) {
+  return createHash("sha256").update(normText(body.replace(/^\s*(?:[-*•☐☑]|\[[ x]\])\s*/gim, ""))).digest("hex");
+}
+
 /**
- * Save a note and auto-extract its action items.
- *
- * Notes from a linked source (a Google Doc, a Confluence page) are matched on
- * that source: re-importing updates the existing note and only adds action
- * items that weren't there before. That suits running notes docs, where each
- * meeting adds a section to the same doc.
+ * Find an existing note that this text is a copy or a newer version of.
+ * - the same text (same file re-uploaded, or someone else's copy): duplicate
+ * - this text contains nearly all of an existing note's lines and more
+ *   (a running notes doc downloaded again later): newer version of it
+ * - nearly all of this text is already in an existing note (an older copy): duplicate
  */
-export function importNoteText(db: DatabaseSync, n: NoteInput) {
-  const linked = n.source && !["manual", "upload"].includes(n.source) ? findNoteBySource(db, n.source) : null;
-  let noteId: number;
-  if (linked) {
-    updateNoteContent(db, linked.id, n);
-    noteId = linked.id;
-  } else {
-    noteId = addNote(db, n);
+export function findSameNotes(notes: Note[], body: string): { note: Note; relation: "same" | "newer" | "older" } | null {
+  const hash = noteHash(body);
+  const exact = notes.find((n) => (n.contentHash ?? noteHash(n.body)) === hash);
+  if (exact) return { note: exact, relation: "same" };
+  const mine = contentLines(body);
+  if (mine.size < 4) return null;
+  let best: { note: Note; relation: "newer" | "older"; score: number } | null = null;
+  for (const n of notes) {
+    const theirs = contentLines(n.body);
+    if (theirs.size < 4) continue;
+    let shared = 0;
+    for (const l of theirs) if (mine.has(l)) shared++;
+    const ofTheirs = shared / theirs.size;
+    const ofMine = shared / mine.size;
+    if (ofMine >= 0.9 && ofMine >= ofTheirs) {
+      if (!best || ofMine > best.score) best = { note: n, relation: "older", score: ofMine };
+    } else if (ofTheirs >= 0.8) {
+      if (!best || ofTheirs > best.score) best = { note: n, relation: "newer", score: ofTheirs };
+    }
   }
+  return best && { note: best.note, relation: best.relation };
+}
+
+/**
+ * Save meeting notes, link them to the work they discuss, and extract action items.
+ *
+ * Notes are never stored twice:
+ * - A Google Doc or Confluence page is matched on its id. Re-importing it (or
+ *   Refresh) updates the note in place, which suits running notes docs.
+ * - Uploaded or pasted notes are matched on their content, so the same file
+ *   uploaded again, by you or someone else, is recognised. A later download of
+ *   a running notes doc replaces the older copy instead of adding a second one.
+ * - Action items are only added if the same item (by its wording) isn't
+ *   already tracked, from this note or any other.
+ */
+export function importNoteText(db: DatabaseSync, n: NoteInput & { links?: string[]; via?: string }): NoteImportResult {
+  const via = n.via ?? (n.source?.startsWith("gdoc:") ? "Google Doc" : n.source?.startsWith("confluence:") ? "Confluence" : n.source === "upload" ? "upload" : "pasted");
   const year = n.meetingDate ? Number(n.meetingDate.slice(0, 4)) : new Date().getFullYear();
-  const ctx = actionContext(db);
-  const found = extractActionItems(n.body, year, ctx.teams);
-  const have = new Set(
-    listActionItems(db)
-      .filter((a) => a.noteId === noteId)
-      .map((a) => normaliseActionText(a.text)),
+  // A running notes doc's meeting date is its latest meeting.
+  const meetingDate = meetingDates(n.body, year)[0] ?? n.meetingDate ?? null;
+  const hash = noteHash(n.body);
+
+  const bySource = n.source && !["manual", "upload"].includes(n.source) ? findNoteBySource(db, n.source) : null;
+  const same = bySource ? null : findSameNotes(listNotes(db), n.body);
+
+  let noteId: number;
+  let status: NoteImportResult["status"];
+  if (bySource) {
+    noteId = bySource.id;
+    status = (bySource.contentHash ?? noteHash(bySource.body)) === hash ? "unchanged" : "updated";
+    if (status === "updated") updateNoteContent(db, noteId, { ...n, meetingDate });
+  } else if (same && same.relation !== "newer") {
+    noteId = same.note.id;
+    status = "duplicate";
+  } else if (same) {
+    noteId = same.note.id;
+    status = "updated";
+    updateNoteContent(db, noteId, { ...n, title: same.note.title, meetingDate });
+  } else {
+    noteId = addNote(db, { ...n, meetingDate });
+    status = "created";
+  }
+  if (status === "created" || status === "updated") setNoteHash(db, noteId, hash);
+  const note = getNote(db, noteId)!;
+  logNoteImport(
+    db,
+    noteId,
+    via,
+    status,
+    status === "duplicate" ? `Matched existing notes "${note.title}"${same?.relation === "older" ? " (an older copy)" : ""}` : (n.attachmentName ?? null),
   );
+  if (n.links?.length) addNoteLinks(db, noteId, n.links);
+  if (status === "duplicate" || status === "unchanged") {
+    return { noteId, status, title: note.title, actions: 0, found: 0, updated: true };
+  }
+
+  // What the notes are about.
+  const ctx = actionContext(db);
+  const refs: { key: string; line: string }[] = [];
+  for (const s of noteSections(n.body, year)) {
+    if (s.heading) continue;
+    for (const mt of ctx.match(s.line)) refs.push({ key: mt.key, line: s.line });
+  }
+  setAutoNoteRefs(db, noteId, refs);
+
+  // Action items, skipping any already tracked anywhere.
+  const found = extractActionItems(n.body, year, ctx.teams);
+  const have = new Set(listActionItems(db).map((a) => normaliseActionText(a.text)));
   let added = 0;
   for (const { team, ...a } of found) {
-    if (have.has(normaliseActionText(a.text))) continue;
+    const k = normaliseActionText(a.text);
+    if (have.has(k)) continue;
+    have.add(k);
     const given = {
       subTrack: n.subTrack || (team && ctx.isSubTrack(team) ? team : null),
       platform: n.platform || (team && !ctx.isSubTrack(team) ? team : null),
@@ -149,7 +245,7 @@ export function importNoteText(db: DatabaseSync, n: NoteInput) {
     addActionItem(db, { ...a, noteId, ...ctx.scopeFor(a.text, given) });
     added++;
   }
-  return { noteId, actions: added, found: found.length, updated: !!linked };
+  return { noteId, status, title: note.title, actions: added, found: found.length, updated: status !== "created" };
 }
 
 /**
@@ -160,11 +256,13 @@ export function importNoteText(db: DatabaseSync, n: NoteInput) {
 export function actionContext(db: DatabaseSync) {
   const m = loadModel(db);
   const platformNames = m.platforms;
+  const match = buildItemMatcher(m.issues);
   return {
     teams: [...m.subTracks, ...m.platforms],
     isSubTrack: (name: string) => m.subTracks.includes(name),
+    match,
     scopeFor(text: string, given: { subTrack?: string | null; platform?: string | null }) {
-      const links = [...new Set(text.match(/\b[A-Z][A-Z0-9]{1,9}-\d+\b/g) ?? [])].filter((k) => m.byKey.has(k));
+      const links = match(text).map((x) => x.key);
       const named = platformNames.filter((p) => new RegExp(`(^|[^A-Za-z])${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z]|$)`, "i").test(text));
       const fromLinks = (pick: (k: string) => string | null | undefined) => {
         const vals = [...new Set(links.map(pick).filter((v): v is string => !!v))];
@@ -190,7 +288,7 @@ export function actionContext(db: DatabaseSync) {
 export async function importGoogleDoc(
   db: DatabaseSync,
   url: string,
-  opts: { subTrack?: string | null; platform?: string | null } = {},
+  opts: { subTrack?: string | null; platform?: string | null; links?: string[] } = {},
 ) {
   const startedAt = nowIso();
   try {
@@ -203,9 +301,10 @@ export async function importGoogleDoc(
       sourceUrl: doc.url,
       subTrack: opts.subTrack ?? null,
       platform: opts.platform ?? null,
+      links: opts.links,
     });
-    logSync(db, "google-docs", true, `${r.updated ? "Refreshed" : "Imported"} "${doc.title}": ${r.actions} new action items`, startedAt);
-    return { ...r, title: doc.title };
+    logSync(db, "google-docs", true, `${r.status} "${doc.title}": ${r.actions} new action items`, startedAt);
+    return r;
   } catch (e) {
     logSync(db, "google-docs", false, e instanceof Error ? e.message : String(e), startedAt);
     throw e;
@@ -215,8 +314,16 @@ export async function importGoogleDoc(
 /** A downloaded notes file (.docx/.txt/.md/.html). The original is kept next to the database. */
 export function importAttachedNote(
   db: DatabaseSync,
-  f: { name: string; bytes: Buffer; title?: string; meetingDate?: string | null; subTrack?: string | null; platform?: string | null },
-) {
+  f: {
+    name: string;
+    bytes: Buffer;
+    title?: string;
+    meetingDate?: string | null;
+    subTrack?: string | null;
+    platform?: string | null;
+    links?: string[];
+  },
+): NoteImportResult {
   const body = documentToText(f.name, f.bytes);
   if (!body.trim()) throw new Error(`No text found in ${f.name}.`);
   const title = f.title?.trim() || f.name.replace(/\.[^.]+$/, "");
@@ -228,9 +335,13 @@ export function importAttachedNote(
     attachmentName: f.name,
     subTrack: f.subTrack ?? null,
     platform: f.platform ?? null,
+    links: f.links,
   });
-  setNoteAttachment(db, r.noteId, f.name, storeAttachment(r.noteId, f.name, f.bytes));
-  logSync(db, "notes-upload", true, `Attached "${f.name}": ${r.actions} action items`, nowIso());
+  // Keep the newest copy of the file; a duplicate upload stores nothing.
+  if (r.status === "created" || r.status === "updated") {
+    setNoteAttachment(db, r.noteId, f.name, storeAttachment(r.noteId, f.name, f.bytes));
+  }
+  logSync(db, "notes-upload", true, `${r.status} "${f.name}": ${r.actions} action items`, nowIso());
   return r;
 }
 

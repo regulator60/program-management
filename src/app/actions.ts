@@ -14,6 +14,7 @@ import {
   importSheetRows,
   syncJira,
   type SheetTarget,
+  type NoteImportResult,
 } from "@/lib/connectors";
 import { getDb, nowIso } from "@/lib/db";
 import { editsToRestPayload, JiraClient } from "@/lib/jira/client";
@@ -38,6 +39,8 @@ import {
   stageEdit,
   updateActionItem,
   upsertIssues,
+  markNoteSuggestions,
+  setNoteLinks,
 } from "@/lib/store";
 import { EDITABLE_FIELDS, PROGRESS_LABEL, parseScope, type EditableField, type Scope, type UpdateProgress } from "@/lib/types";
 
@@ -56,14 +59,15 @@ function done(target: string, msg: string, ok = true): never {
   redirect(`${path}${path.includes("?") ? "&" : "?"}${q}${hash ? `#${hash}` : ""}`);
 }
 
-async function attempt(path: string, fn: () => Promise<string> | string): Promise<never> {
+async function attempt(to: string | (() => string), fn: () => Promise<string> | string): Promise<never> {
   let msg: string;
+  const path = () => (typeof to === "string" ? to : to());
   try {
     msg = await fn();
   } catch (e) {
-    done(path, e instanceof Error ? e.message : String(e), false);
+    done(path(), e instanceof Error ? e.message : String(e), false);
   }
-  done(path, msg);
+  done(path(), msg);
 }
 
 // ---------- Jira / data ----------
@@ -190,61 +194,120 @@ export async function pushViaRestAction() {
 
 // ---------- Notes & action items ----------
 
+/** What happened to imported notes, in one sentence. */
+function importMessage(r: NoteImportResult, what: string) {
+  switch (r.status) {
+    case "duplicate":
+      return `${what} matches notes you already have ("${r.title}"), so nothing was added twice.`;
+    case "unchanged":
+      return `"${r.title}" hasn't changed since the last import.`;
+    case "updated":
+      return `Updated "${r.title}" with the latest version. ${r.actions} new action item(s); review linked work and suggested Jira changes below.`;
+    default:
+      return `Added "${r.title}". ${r.actions} action item(s); review linked work and suggested Jira changes below.`;
+  }
+}
+const linksFrom = (fd: FormData) => keysFrom(str(fd, "links"));
+const noteBack = (fd: FormData, r?: NoteImportResult) => {
+  const link = str(fd, "links");
+  return `/notes${link ? `?link=${encodeURIComponent(link)}` : ""}${r ? `#note-${r.noteId}` : ""}`;
+};
+
 export async function addNoteAction(fd: FormData) {
-  await attempt("/notes", () => {
-    const body = str(fd, "body");
-    if (!body) throw new Error("Note body is empty.");
-    const r = importNoteText(getDb(), {
-      title: str(fd, "title") || "Untitled notes",
-      body,
-      meetingDate: str(fd, "meetingDate") || null,
-      subTrack: str(fd, "subTrack") || null,
-      platform: str(fd, "platform") || null,
-    });
-    return `Note saved. Found ${r.actions} action item(s).`;
-  });
+  let r: NoteImportResult | undefined;
+  await attempt(
+    () => noteBack(fd, r),
+    () => {
+      const body = str(fd, "body");
+      if (!body) throw new Error("Note body is empty.");
+      r = importNoteText(getDb(), {
+        title: str(fd, "title") || "Untitled notes",
+        body,
+        meetingDate: str(fd, "meetingDate") || null,
+        subTrack: str(fd, "subTrack") || null,
+        platform: str(fd, "platform") || null,
+        links: linksFrom(fd),
+      });
+      return importMessage(r, "These notes");
+    },
+  );
 }
 
 export async function importGoogleDocAction(fd: FormData) {
-  await attempt("/notes", async () => {
-    const url = str(fd, "url");
-    if (!url) throw new Error("Paste a Google Docs link.");
-    const r = await importGoogleDoc(getDb(), url, { subTrack: str(fd, "subTrack") || null, platform: str(fd, "platform") || null });
-    return `${r.updated ? "Refreshed" : "Imported"} "${r.title}". ${r.actions} new action item(s). Review suggested Jira updates below.`;
-  });
+  let r: NoteImportResult | undefined;
+  await attempt(
+    () => noteBack(fd, r),
+    async () => {
+      const url = str(fd, "url");
+      if (!url) throw new Error("Paste a Google Docs link.");
+      r = await importGoogleDoc(getDb(), url, {
+        subTrack: str(fd, "subTrack") || null,
+        platform: str(fd, "platform") || null,
+        links: linksFrom(fd),
+      });
+      return importMessage(r, "This doc");
+    },
+  );
 }
 
 export async function attachNoteAction(fd: FormData) {
-  await attempt("/notes", async () => {
-    const file = fd.get("file");
-    if (!(file instanceof File) || file.size === 0) throw new Error("Choose a notes file to attach.");
-    if (file.size > 20 * 1024 * 1024) throw new Error("That file is over 20 MB.");
-    const r = importAttachedNote(getDb(), {
-      name: file.name,
-      bytes: Buffer.from(await file.arrayBuffer()),
-      title: str(fd, "title"),
-      meetingDate: str(fd, "meetingDate") || null,
-      subTrack: str(fd, "subTrack") || null,
-      platform: str(fd, "platform") || null,
-    });
-    return `Attached ${file.name}. Found ${r.actions} action item(s). Review suggested Jira updates below.`;
-  });
+  let r: NoteImportResult | undefined;
+  await attempt(
+    () => noteBack(fd, r),
+    async () => {
+      const file = fd.get("file");
+      if (!(file instanceof File) || file.size === 0) throw new Error("Choose a notes file to attach.");
+      if (file.size > 20 * 1024 * 1024) throw new Error("That file is over 20 MB.");
+      r = importAttachedNote(getDb(), {
+        name: file.name,
+        bytes: Buffer.from(await file.arrayBuffer()),
+        title: str(fd, "title"),
+        meetingDate: str(fd, "meetingDate") || null,
+        subTrack: str(fd, "subTrack") || null,
+        platform: str(fd, "platform") || null,
+        links: linksFrom(fd),
+      });
+      return importMessage(r, file.name);
+    },
+  );
 }
 
 export async function refreshNoteAction(fd: FormData) {
-  await attempt("/notes", async () => {
+  await attempt(`/notes#note-${str(fd, "id")}`, async () => {
     const r = await refreshNote(getDb(), Number(str(fd, "id")));
-    return `Refreshed. ${r.actions} new action item(s).`;
+    return importMessage(r, "The source");
+  });
+}
+
+/** Which items a note is about (chips on the note). */
+export async function setNoteLinksAction(fd: FormData) {
+  await attempt(`/notes#note-${str(fd, "noteId")}`, () => {
+    setNoteLinks(getDb(), Number(str(fd, "noteId")), keysFrom(str(fd, "keys")));
+    return "Linked work updated.";
   });
 }
 
 /**
- * Stage the Jira suggestions the user ticked on a note. Each suggestion posts
- * k-<i>, f-<i>, v-<i> (value may have been edited) and the checkbox "pick"=<i>.
+ * Stage (or dismiss) the Jira suggestions ticked on a note. Each suggestion
+ * posts k-<i>, f-<i>, v-<i> (the value may have been edited), s-<i> (its
+ * signatures) and the checkbox "pick"=<i>. Staged and dismissed suggestions
+ * are remembered, so the same change isn't offered again from a refresh or
+ * from another copy of the notes.
  */
+function parseSigs(v: string): string[] {
+  try {
+    const a = JSON.parse(v);
+    return Array.isArray(a) ? a.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function stageNoteSuggestionsAction(fd: FormData) {
   await attempt(`/notes#note-${str(fd, "noteId")}`, () => {
     const db = getDb();
+    const noteId = Number(str(fd, "noteId"));
+    const dismiss = str(fd, "intent") === "dismiss";
     const picks = fd.getAll("pick").map(String);
     if (!picks.length) throw new Error("Tick at least one suggestion.");
     const allowed = new Set<EditableField>(["dueDate", "startDate", "status", "comment"]);
@@ -253,11 +316,13 @@ export async function stageNoteSuggestionsAction(fd: FormData) {
       const key = str(fd, `k-${i}`);
       const field = str(fd, `f-${i}`) as EditableField;
       const value = str(fd, `v-${i}`);
+      const sigs = parseSigs(str(fd, `s-${i}`));
       if (!key || !allowed.has(field) || !value) continue;
-      stageEdit(db, key, field, value);
+      if (!dismiss) stageEdit(db, key, field, value);
+      markNoteSuggestions(db, noteId, sigs, dismiss ? "dismissed" : "staged");
       n++;
     }
-    return `Staged ${n} Jira update(s). Push them from Data & Jira sync.`;
+    return dismiss ? `Dismissed ${n} suggestion(s).` : `Staged ${n} Jira update(s). Push them from Data & Jira sync.`;
   });
 }
 

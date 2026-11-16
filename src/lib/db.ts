@@ -126,6 +126,37 @@ CREATE TABLE IF NOT EXISTS item_updates (
 );
 CREATE INDEX IF NOT EXISTS idx_item_updates_key ON item_updates(key, created_at);
 
+-- Jira items a meeting note is about. "auto" rows are found in the text (one per
+-- line that mentions the item); "manual" rows were added by the user; "excluded"
+-- rows mark an item the user said the note is not about.
+CREATE TABLE IF NOT EXISTS note_refs (
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  line TEXT,
+  kind TEXT NOT NULL DEFAULT 'auto'
+);
+CREATE INDEX IF NOT EXISTS idx_note_refs_key ON note_refs(key);
+CREATE INDEX IF NOT EXISTS idx_note_refs_note ON note_refs(note_id);
+
+-- Suggestions from notes that were staged or dismissed, so they aren't offered
+-- again when the notes are refreshed or another copy is uploaded.
+CREATE TABLE IF NOT EXISTS note_suggestions (
+  sig TEXT PRIMARY KEY,
+  note_id INTEGER,
+  state TEXT NOT NULL,      -- staged | dismissed
+  at TEXT NOT NULL
+);
+
+-- Every time notes were imported, and what happened (created / updated / duplicate / unchanged).
+CREATE TABLE IF NOT EXISTS note_imports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  via TEXT NOT NULL,
+  result TEXT NOT NULL,
+  detail TEXT,
+  at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL,
@@ -144,6 +175,7 @@ const MIGRATIONS: { table: string; column: string; ddl: string }[] = [
   { table: "notes", column: "sub_track", ddl: "ALTER TABLE notes ADD COLUMN sub_track TEXT" },
   { table: "notes", column: "updated_at", ddl: "ALTER TABLE notes ADD COLUMN updated_at TEXT" },
   { table: "notes", column: "platform", ddl: "ALTER TABLE notes ADD COLUMN platform TEXT" },
+  { table: "notes", column: "content_hash", ddl: "ALTER TABLE notes ADD COLUMN content_hash TEXT" },
   { table: "action_items", column: "platform", ddl: "ALTER TABLE action_items ADD COLUMN platform TEXT" },
   // "team": small action from notes / a call. "program": a high-level ask assigned out to teams.
   { table: "action_items", column: "kind", ddl: "ALTER TABLE action_items ADD COLUMN kind TEXT NOT NULL DEFAULT 'team'" },

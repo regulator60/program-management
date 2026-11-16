@@ -188,6 +188,23 @@ export function seedDemo(db: DatabaseSync) {
     ].join("\n"),
   });
 
+  // A running notes doc: several meetings in one doc, matched to work by name.
+  importNoteText(db, {
+    title: "Dashboard working session – running notes",
+    meetingDate: d(-1),
+    body: [
+      fmtHeading(d(-1)),
+      "- Balances API v3: View Account still can't commit before " + monthDay(d(70)) + "; escalating at program sync",
+      "- Accounts aggregation API can start against the v2 mock, kicked off this week",
+      "- Action: Ana to share the mock contract with web by " + monthDay(d(4)),
+      "",
+      fmtHeading(d(-8)),
+      "- Balances API v3 slipped to " + monthDay(d(45)),
+      "- Dashboard web experience design review done",
+      "- AI: Jordan to draft re-plan options for Dashboard GA by " + monthDay(d(5)),
+    ].join("\n"),
+  });
+
   // Program action items, assigned out to teams. Platform-labelled intake items assign themselves.
   ensureAutoAssignments(db);
   const subTracks = ["Login & Auth", "Dashboard", "Payments"].map((name) => ({ kind: "subtrack" as const, name }));
@@ -219,3 +236,7 @@ export function seedDemo(db: DatabaseSync) {
   addActionItem(db, { text: "Draft re-plan options if Balances API v3 can't pull in", owner: "Jordan Kim", dueDate: d(5), subTrack: "Dashboard", platform: "Web", links: ["VIEW-50", "BIGP-103", "BIGP-202"] });
   addActionItem(db, { text: "Borrow 4 Android test devices from the Non-Digital lab", owner: "Ana Gomez", dueDate: d(3), subTrack: "Login & Auth", platform: "Android", links: ["BIGP-201"] });
 }
+
+const fmtHeading = (iso: string) =>
+  new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) + " – working session";
+const monthDay = (iso: string) => new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });

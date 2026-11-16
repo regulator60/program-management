@@ -12,6 +12,7 @@ import type {
   IssueChange,
   Link,
   Note,
+  NoteRef,
   PendingEdit,
 } from "./types";
 
@@ -347,13 +348,98 @@ function rowToNote(r: Row): Note {
     subTrack: (r.sub_track as string) ?? null,
     createdAt: String(r.created_at),
     updatedAt: (r.updated_at as string) ?? null,
+    contentHash: (r.content_hash as string) ?? null,
   };
 }
 
 export function listNotes(db: DatabaseSync): Note[] {
+  const refs = listNoteRefs(db);
   return (
     db.prepare("SELECT * FROM notes ORDER BY COALESCE(meeting_date, created_at) DESC, id DESC").all() as Row[]
-  ).map(rowToNote);
+  ).map((r) => ({ ...rowToNote(r), refs: refs.get(Number(r.id)) ?? [] }));
+}
+
+// ---------- What notes are about, and what was done with their suggestions ----------
+
+export function listNoteRefs(db: DatabaseSync): Map<number, NoteRef[]> {
+  const m = new Map<number, NoteRef[]>();
+  for (const r of db.prepare("SELECT note_id, key, line, kind FROM note_refs ORDER BY rowid").all() as Row[]) {
+    const id = Number(r.note_id);
+    m.set(id, [...(m.get(id) ?? []), { key: String(r.key), line: (r.line as string) ?? null, kind: r.kind as NoteRef["kind"] }]);
+  }
+  return m;
+}
+
+/** Replace the automatically found references for a note (manual links and exclusions are kept). */
+export function setAutoNoteRefs(db: DatabaseSync, noteId: number, refs: { key: string; line: string }[]) {
+  db.prepare("DELETE FROM note_refs WHERE note_id = ? AND kind = 'auto'").run(noteId);
+  const excluded = new Set(
+    (db.prepare("SELECT key FROM note_refs WHERE note_id = ? AND kind = 'excluded'").all(noteId) as Row[]).map((r) => String(r.key)),
+  );
+  const ins = db.prepare("INSERT INTO note_refs (note_id, key, line, kind) VALUES (?, ?, ?, 'auto')");
+  for (const r of refs) if (!excluded.has(r.key)) ins.run(noteId, r.key, r.line.slice(0, 500));
+}
+
+/**
+ * Set exactly which items a note is about. Items found in the text that the
+ * user removes are remembered as excluded, so a refresh doesn't bring them back.
+ */
+export function setNoteLinks(db: DatabaseSync, noteId: number, keys: string[]) {
+  const want = new Set(keys);
+  const rows = db.prepare("SELECT key, kind FROM note_refs WHERE note_id = ?").all(noteId) as Row[];
+  const auto = new Set(rows.filter((r) => r.kind === "auto").map((r) => String(r.key)));
+  db.prepare("DELETE FROM note_refs WHERE note_id = ? AND kind IN ('manual', 'excluded')").run(noteId);
+  const ins = db.prepare("INSERT INTO note_refs (note_id, key, line, kind) VALUES (?, ?, NULL, ?)");
+  for (const k of want) if (!auto.has(k)) ins.run(noteId, k, "manual");
+  for (const k of auto) {
+    if (want.has(k)) continue;
+    db.prepare("DELETE FROM note_refs WHERE note_id = ? AND key = ? AND kind = 'auto'").run(noteId, k);
+    ins.run(noteId, k, "excluded");
+  }
+}
+
+/** Add manual links without touching the rest (used when notes are attached from an item's page). */
+export function addNoteLinks(db: DatabaseSync, noteId: number, keys: string[]) {
+  const have = new Set(
+    (db.prepare("SELECT key FROM note_refs WHERE note_id = ? AND kind != 'excluded'").all(noteId) as Row[]).map((r) => String(r.key)),
+  );
+  db.prepare(`DELETE FROM note_refs WHERE note_id = ? AND kind = 'excluded' AND key IN (${keys.map(() => "?").join(",") || "''"})`).run(
+    noteId,
+    ...keys,
+  );
+  const ins = db.prepare("INSERT INTO note_refs (note_id, key, line, kind) VALUES (?, ?, NULL, 'manual')");
+  for (const k of keys) if (!have.has(k)) ins.run(noteId, k);
+}
+
+export function handledNoteSuggestions(db: DatabaseSync): Set<string> {
+  return new Set((db.prepare("SELECT sig FROM note_suggestions").all() as Row[]).map((r) => String(r.sig)));
+}
+
+export function markNoteSuggestions(db: DatabaseSync, noteId: number, sigs: string[], state: "staged" | "dismissed") {
+  const st = db.prepare("INSERT OR REPLACE INTO note_suggestions (sig, note_id, state, at) VALUES (?, ?, ?, ?)");
+  for (const s of sigs) st.run(s, noteId, state, nowIso());
+}
+
+export type NoteImport = { noteId: number; via: string; result: string; detail: string | null; at: string };
+
+export function logNoteImport(db: DatabaseSync, noteId: number, via: string, result: string, detail: string | null = null) {
+  db.prepare("INSERT INTO note_imports (note_id, via, result, detail, at) VALUES (?, ?, ?, ?, ?)").run(noteId, via, result, detail, nowIso());
+}
+
+export function listNoteImports(db: DatabaseSync): Map<number, NoteImport[]> {
+  const m = new Map<number, NoteImport[]>();
+  for (const r of db.prepare("SELECT * FROM note_imports ORDER BY at DESC, id DESC").all() as Row[]) {
+    const id = Number(r.note_id);
+    m.set(id, [
+      ...(m.get(id) ?? []),
+      { noteId: id, via: String(r.via), result: String(r.result), detail: (r.detail as string) ?? null, at: String(r.at) },
+    ]);
+  }
+  return m;
+}
+
+export function setNoteHash(db: DatabaseSync, id: number, hash: string) {
+  db.prepare("UPDATE notes SET content_hash = ? WHERE id = ?").run(hash, id);
 }
 
 export function getNote(db: DatabaseSync, id: number): Note | null {

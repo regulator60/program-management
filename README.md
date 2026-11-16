@@ -24,7 +24,7 @@ Outcome
 | **Dependencies** | Every blocks / depends-on link touching your items, graded *conflict / overdue / tight / no date / ok / done*. It also lists which linked items **changed dates** recently. Each dependency has **its own page** (`/dependencies/<from>/<to>`), opened from anywhere a dependency is shown. It has both sides with dates, owners and teams; an **Ask next** question grounded in your records; updates on the dependency (optionally staged as a Jira comment on your side); meeting-note lines that mention it; date history; the milestone and outcome it puts at risk; and its action items, with a form to add more. You can also stage date changes on either side. |
 | **Risks & decisions** | Grouped by tier. Tier 3 is your track only; tiers 1 and 2 span multiple tracks. |
 | **Action items** | Two kinds. **Program action items** are asks from the program, from the Jira intake board (the `intake` label) or added in the app. Each is assigned to sub-tracks and/or platforms, and every team marks its own part done. Intake items labelled `Domain:` assign themselves to those platforms. When all teams finish, one click stages the Jira item to Done with a summary comment. **Team action items** are smaller follow-ups from calls and notes. Each belongs to a sub-track and/or platform and links to the milestones, dependencies and risks it moves forward. Jira keys in the text are linked automatically, and actions under a team heading in notes are assigned to that team. |
-| **Meeting notes** | Import a Google Doc, attach a downloaded file (.docx/.txt/.md/.html), paste text, or pull a Confluence page. Action items are extracted automatically (owner and due date included), and Jira updates are suggested for you to review and stage. |
+| **Meeting notes** | Import a Google Doc, upload a downloaded file (.docx/.txt/.md/.html), paste text, or pull a Confluence page. You can also start from an item or dependency page with **+ Attach meeting notes**, which links the notes to that item. Each note shows its **linked work**, matched by Jira key or by item name, and you can edit the links. It also shows **suggested Jira changes**: new dates and statuses, plus one comment per item that quotes the relevant lines and links the full Google Doc. Action items are extracted automatically. Duplicates are caught, so nothing is added twice (see below). |
 | **Settings** | Sections for General, Jira connection (with a connection test), Confluence, Issue types, Fields, Labels & links, Analysis thresholds, Credentials (which environment variables are set) and Advanced (raw JSON, reset). |
 | **Data & Jira sync** | Pull from Jira over REST or from an export file, import Google Sheets, and push staged edits back to Jira. |
 
@@ -115,6 +115,25 @@ What gets extracted:
 
 Untick or edit any suggestion, then **Stage selected**. Nothing goes to Jira until you push.
 
+### Linked work and suggested changes
+
+- **Linked work.** Each line is matched to Jira items by key, or by name. For example, "Balances API v3 slipped" matches `[View Account] Balances API v3`. A name that could mean more than one item is skipped rather than guessed.
+- **Suggested changes.** A date with a scheduling word suggests a new due date, or a new start date if the line says "start". "done" or "shipped" suggests Done, and "started" suggests In Progress. These lines don't produce changes:
+  - action items ("Jordan to draft options by Nov 21")
+  - a finished sub-step ("design review done")
+  - a hand-off ("shipped to QA")
+- **Year-less dates** that fall well before the meeting are read as next year, so "Jan 30" in a November meeting means next January.
+- **Running notes docs.** Dated headings ("Nov 14, 2026 – weekly sync") split the doc into meetings. The latest meeting that discusses an item wins, so an older "slipped to Dec 31" isn't suggested once a newer meeting has discussed that item.
+- **Jira comments.** Each item gets one comment quoting its lines, with `Full notes: <link>` when the notes came from Google Docs or Confluence.
+
+### No duplicates
+
+- **A Google Doc or Confluence page** is matched on its id. Re-importing it, or clicking **Refresh**, updates the same note, and a re-import with no changes is reported as unchanged.
+- **Uploaded or pasted notes** are matched on their content, ignoring spacing and bullet style. The same file uploaded again, by you or by someone else, is recognised, and nothing is added. A later download of a running notes doc updates the earlier note. Uploading an older copy afterwards is ignored.
+- **Action items** aren't added again if one with the same wording is already tracked from any note.
+- **Suggestions you stage or dismiss** are remembered line by line. They aren't offered again after a refresh or from another copy, and a refreshed running doc only offers its new lines.
+- **Each note shows its import history,** for example "Imported 3× · 1 duplicate upload ignored".
+
 ## Pushing changes back to Jira
 
 Edits are staged locally and marked `PENDING`. Push them in one of two ways:
@@ -152,6 +171,7 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/components/combobox.tsx`, `src/lib/options.ts`: type-ahead pickers and their known values
 - `src/lib/store.ts`: SQLite access, staged edits, change history
 - `src/lib/notes.ts`, `src/lib/noteInsights.ts`, `src/lib/documents.ts`: action-item extraction, Jira suggestions, Google Docs / .docx reading
+- `src/lib/noteMatch.ts`: matching note lines to Jira items by key or name, running-notes sections, duplicate detection helpers
 - `scripts/build-demo-site.mjs`: static snapshot for GitHub Pages
 - `scripts/desktop-runner.mjs`: runs the app on your desktop and updates it from `main`
 - `src/app/`: pages (server components) and server actions
