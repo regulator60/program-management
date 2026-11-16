@@ -5,7 +5,8 @@ import { FilterBar } from "@/components/client";
 import { Card, DateCell, Empty, HealthBadge, KeyLink, LevelTag, PageHeader, StatusPill, Table, Td, Th, fmtDate } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { HEALTH_ORDER, needByDate, type Dependency } from "@/lib/dependencies";
-import { ancestry } from "@/lib/insights";
+import { ancestry, depHref } from "@/lib/insights";
+import Link from "next/link";
 import { loadModel, matchesFilter, parseFilter } from "@/lib/model";
 import type { IssueView } from "@/lib/store";
 
@@ -195,7 +196,14 @@ function Row({ d, today, cpm }: { d: Dependency; today: string; cpm: IssueView |
       <Td>
         <Side i={d.successor} date={needByDate(d.successor)} dateLabel="Needs by" changed={changedKeys.has(d.successor.key)} />
       </Td>
-      <Td className="min-w-[220px] text-sm text-ink-2">{d.reason}</Td>
+      <Td className="min-w-[220px] text-sm text-ink-2">
+        {d.reason}
+        <div>
+          <Link href={depHref(d)} className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline">
+            Open dependency <ArrowRight className="h-3 w-3" aria-hidden />
+          </Link>
+        </div>
+      </Td>
       <Td className="min-w-[180px]">
         {cpm && ["conflict", "overdue", "tight", "unknown"].includes(d.health) ? (
           <>

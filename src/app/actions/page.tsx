@@ -12,12 +12,14 @@ import {
   updateAssignmentAction,
 } from "@/app/actions";
 import { FilterBar } from "@/components/client";
+import { Combobox, MultiCombobox, type ComboOption } from "@/components/combobox";
+import { issueOptions, peopleOptions } from "@/lib/options";
 import { Button, Card, DateCell, Empty, KeyLink, PageHeader, Progress, TeamSelect, ToneBadge, cx, fmtDate, inputCls } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { loadModel, parseFilter, type Model } from "@/lib/model";
 import { withBase } from "@/lib/paths";
 import { actionInScope, allScopes, listProgramActions, type ProgramAction } from "@/lib/programActions";
-import { listActionItems, listNotes } from "@/lib/store";
+import { listActionItems, listAssignments, listNotes } from "@/lib/store";
 import { scopeId, type ActionItem, type Scope } from "@/lib/types";
 
 export const metadata = { title: "Action items" };
@@ -40,6 +42,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
   const actions = listActionItems(db);
   const notes = new Map(listNotes(db).map((n) => [n.id, n]));
   const scopes = allScopes(m);
+  const opts: Opts = { people: peopleOptions(m, actions, listAssignments(db)), issues: issueOptions(m) };
   const scope: Scope | null = f.subTrack ? { kind: "subtrack", name: f.subTrack } : f.platform ? { kind: "platform", name: f.platform } : null;
   const qs = new URLSearchParams(
     Object.entries(sp).filter(([k, v]) => typeof v === "string" && !["msg", "err"].includes(k)) as [string, string][],
@@ -91,7 +94,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
         ) : (
           <ul className="divide-y divide-line">
             {programs.map((p) => (
-              <ProgramRow key={p.parent} p={p} scopes={scopes} today={m.today} back={back} focus={scope} />
+              <ProgramRow key={p.parent} p={p} scopes={scopes} today={m.today} back={back} focus={scope} opts={opts} />
             ))}
           </ul>
         )}
@@ -102,7 +105,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
           <form action={addProgramActionAction} className="grid gap-3 border-t border-line bg-panel-2 px-5 py-4">
             <div className="grid gap-2 md:grid-cols-[1fr_180px_160px]">
               <input name="text" required placeholder="What does the program need every team to do?" className={inputCls} />
-              <input name="owner" placeholder="Requested by" className={inputCls} />
+              <Combobox name="owner" options={opts.people} placeholder="Requested by" />
               <input name="dueDate" type="date" className={inputCls} />
             </div>
             <ScopeCheckboxes scopes={scopes} checked={new Set(scope ? [scopeId(scope)] : [])} />
@@ -119,19 +122,21 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
         subtitle="Follow-ups from calls and meeting notes. Jira keys mentioned in the text are linked automatically."
         flush
       >
-        <form
-          action={addActionItemAction}
-          className="grid gap-2 border-b border-line bg-panel-2 px-5 py-4 md:grid-cols-[1fr_140px_140px_150px_150px_auto]"
-        >
+        <form action={addActionItemAction} className="grid gap-2 border-b border-line bg-panel-2 px-5 py-4">
           <input type="hidden" name="back" value={back} />
-          <input name="text" placeholder="New action… e.g. Chase VIEW-50 for a committed date" className={inputCls} required />
-          <input name="owner" placeholder="Owner" className={inputCls} />
-          <input name="dueDate" type="date" className={inputCls} />
-          <TeamSelect name="subTrack" options={m.subTracks} placeholder="Sub-track" value={f.subTrack ?? ""} />
-          <TeamSelect name="platform" options={m.platforms} placeholder="Platform" value={f.platform ?? ""} />
-          <Button type="submit">
-            <Plus className="h-4 w-4" aria-hidden /> Add
-          </Button>
+          <div className="grid gap-2 md:grid-cols-[1fr_200px_150px]">
+            <input name="text" placeholder="New action… e.g. Chase VIEW-50 for a committed date" className={inputCls} required />
+            <Combobox name="owner" options={opts.people} placeholder="Owner" />
+            <input name="dueDate" type="date" className={inputCls} aria-label="Due date" />
+          </div>
+          <div className="grid gap-2 md:grid-cols-[160px_160px_1fr_auto]">
+            <TeamSelect name="subTrack" options={m.subTracks} placeholder="Sub-track" value={f.subTrack ?? ""} />
+            <TeamSelect name="platform" options={m.platforms} placeholder="Platform" value={f.platform ?? ""} />
+            <MultiCombobox name="links" options={opts.issues} placeholder="Link to milestones, dependencies, risks…" />
+            <Button type="submit">
+              <Plus className="h-4 w-4" aria-hidden /> Add
+            </Button>
+          </div>
         </form>
         {team.length === 0 ? (
           <div className="p-5">
@@ -140,7 +145,7 @@ async function Actions({ searchParams }: { searchParams: PageProps<"/actions">["
         ) : (
           <ul className="divide-y divide-line">
             {team.map((a) => (
-              <TeamRow key={a.id} a={a} m={m} back={back} noteTitle={a.noteId ? notes.get(a.noteId)?.title : undefined} />
+              <TeamRow key={a.id} a={a} m={m} back={back} opts={opts} noteTitle={a.noteId ? notes.get(a.noteId)?.title : undefined} />
             ))}
           </ul>
         )}
@@ -155,7 +160,9 @@ function ProgramRow({
   today,
   back,
   focus,
+  opts,
 }: {
+  opts: Opts;
   p: ProgramAction;
   scopes: Scope[];
   today: string;
@@ -238,7 +245,9 @@ function ProgramRow({
                       <form action={updateAssignmentAction} className="ml-auto flex items-center gap-1.5">
                         <input type="hidden" name="id" value={a.id} />
                         <input type="hidden" name="back" value={back} />
-                        <input name="owner" defaultValue={a.owner ?? ""} placeholder="Owner" className={inputCls + " h-8 w-32 py-1"} />
+                        <div className="w-44">
+                          <Combobox name="owner" options={opts.people} defaultValue={a.owner ?? ""} placeholder="Owner" />
+                        </div>
                         <input
                           name="dueDate"
                           type="date"
@@ -314,7 +323,9 @@ function ScopeCheckboxes({ scopes, checked }: { scopes: Scope[]; checked: Set<st
 }
 
 
-function TeamRow({ a, m, back, noteTitle }: { a: ActionItem; m: Model; back: string; noteTitle?: string }) {
+type Opts = { people: ComboOption[]; issues: ComboOption[] };
+
+function TeamRow({ a, m, back, noteTitle, opts }: { a: ActionItem; m: Model; back: string; noteTitle?: string; opts: Opts }) {
   const late = a.status === "open" && !!a.dueDate && a.dueDate < m.today;
   return (
     <li className={cx("px-5 py-3", a.status === "done" && "opacity-60")}>
@@ -363,7 +374,7 @@ function TeamRow({ a, m, back, noteTitle }: { a: ActionItem; m: Model; back: str
             <input type="hidden" name="back" value={back} />
             <label className="grid gap-1 text-xs text-muted">
               Owner
-              <input name="owner" defaultValue={a.owner ?? ""} className={inputCls} />
+              <Combobox name="owner" options={opts.people} defaultValue={a.owner ?? ""} placeholder="Owner" />
             </label>
             <label className="grid gap-1 text-xs text-muted">
               Due
@@ -379,11 +390,11 @@ function TeamRow({ a, m, back, noteTitle }: { a: ActionItem; m: Model; back: str
             </label>
             <label className="grid gap-1 text-xs text-muted">
               Linked Jira items
-              <input name="links" defaultValue={a.links.join(" ")} placeholder="BIGP-31 VIEW-50" className={inputCls + " font-mono"} />
+              <MultiCombobox name="links" options={opts.issues} defaultValues={a.links} placeholder="Link Jira items…" />
             </label>
             <label className="grid gap-1 text-xs text-muted">
               Tracked in Jira as
-              <input name="jiraKey" defaultValue={a.jiraKey ?? ""} placeholder="BIGP-123" className={inputCls + " font-mono"} />
+              <Combobox name="jiraKey" options={opts.issues} defaultValue={a.jiraKey ?? ""} placeholder="Not in Jira yet" />
             </label>
             <div className="flex justify-between">
               <Button size="sm" type="submit">

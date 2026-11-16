@@ -23,9 +23,15 @@ export type Insight = {
   weight: number;
   /** A question to put to the team in a weekly (S0) call. */
   question?: string;
+  /** Every Jira key this is about (both sides of a dependency), for gathering context. */
+  keys?: string[];
 };
 
 const DAY = 86_400_000;
+
+/** The dedicated page for one dependency. */
+export const depHref = (d: Pick<Dependency, "predecessor" | "successor">) =>
+  `/dependencies/${encodeURIComponent(d.predecessor.key)}/${encodeURIComponent(d.successor.key)}`;
 const days = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / DAY);
 const fmt = (iso: string | null) =>
   iso
@@ -80,6 +86,7 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         detail: `${i.summary}. Was due ${fmt(i.dueDate)}, still ${i.status}.`,
         href: `/items/${i.key}`,
         key: i.key,
+        keys: [i.key],
         threatens: isCpm ? undefined : (() => { const c = up(i.key).cpm; return c ? { key: c.key, summary: c.summary } : undefined; })(),
         weight: d + (isCpm ? 1000 : 0),
         question: `What's the recovery date for ${i.key}, what's blocking it, and who owns the plan?`,
@@ -92,8 +99,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         category: "milestone",
         title: `Plan for ${i.key} finishes ${plural(d, "day")} after its due date`,
         detail: `${i.summary} is due ${fmt(i.dueDate)}, but work under it is scheduled to ${fmt(n.rollup.latestChildDue)}.`,
-        href: `/hierarchy`,
+        href: `/items/${i.key}`,
         key: i.key,
+        keys: [i.key],
         weight: d + (isCpm ? 500 : 0),
         question: `Do we re-plan the work under ${i.key}, add capacity, or move the milestone date?`,
       });
@@ -118,8 +126,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
             ? `${other.key} needs ${mine.key} ${plural(d.slipDays ?? 0, "day")} sooner than it's planned`
             : `${d.predecessor.key} lands ${plural(d.slipDays ?? 0, "day")} after ${d.successor.key} needs it`,
         detail: `${d.predecessor.summary} → ${d.successor.summary}.${threatens ? ` Puts ${threatens.key} (${threatens.summary}) at risk.` : ""}`,
-        href: `/dependencies?key=${mine.key}`,
+        href: depHref(d),
         key: mine.key,
+        keys: [d.predecessor.key, d.successor.key],
         threatens,
         weight: (d.slipDays ?? 0) + (threatens ? 200 : 0),
         question:
@@ -134,8 +143,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         category: "dependency",
         title: `${d.predecessor.key} is overdue and ${d.successor.key} is waiting on it`,
         detail: `${d.predecessor.summary} was due ${fmt(d.predecessor.dueDate)}.`,
-        href: `/dependencies?key=${mine.key}`,
+        href: depHref(d),
         key: mine.key,
+        keys: [d.predecessor.key, d.successor.key],
         threatens,
         weight: days(d.predecessor.dueDate!, today),
         question: `What's the new ETA for ${d.predecessor.key}, and who is chasing it?`,
@@ -147,8 +157,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         category: "dependency",
         title: `${d.predecessor.key} has no committed date, and ${d.successor.key} depends on it`,
         detail: `${d.predecessor.summary}. Ask the owning team for a date.`,
-        href: `/dependencies?key=${mine.key}`,
+        href: depHref(d),
         key: mine.key,
+        keys: [d.predecessor.key, d.successor.key],
         threatens,
         weight: 1,
         question: `Who will get a committed date for ${d.predecessor.key} from the owning team, and by when?`,
@@ -165,8 +176,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         category: "dependency",
         title: `${c.key} moved its due date out ${plural(by, "day")}`,
         detail: `${fmt(c.oldValue)} → ${fmt(c.newValue)}. ${d.successor.key} (${d.successor.summary}) depends on it.`,
-        href: `/dependencies?key=${mine.key}`,
+        href: depHref(d),
         key: c.key,
+        keys: [d.predecessor.key, d.successor.key],
         threatens,
         weight: by,
         question: `What does the ${c.key} slip mean for ${d.successor.key}? Do we need to re-plan or escalate?`,
@@ -185,8 +197,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
         category: "risk",
         title: `Tier ${i.tier} risk open: ${i.summary}`,
         detail: `${i.key} · owner ${i.assignee ?? "unassigned"} · ${due === null ? "no target date" : due < 0 ? `mitigation ${plural(-due, "day")} overdue` : `mitigation due ${fmt(i.dueDate)}`}.`,
-        href: `/raid`,
+        href: `/items/${i.key}`,
         key: i.key,
+        keys: [i.key],
         weight: (3 - (i.tier ?? 3)) * 10 + (due !== null && due < 0 ? -due : 0),
         question: "Is the mitigation on track? What help do we need, and from whom?",
       });
@@ -200,8 +213,9 @@ export function buildInsights(m: Model, f: Filter, actionItems: ActionItem[] = [
           category: "decision",
           title: due < 0 ? `Decision ${i.key} is ${plural(-due, "day")} overdue` : `Decision ${i.key} needed by ${fmt(i.dueDate)}`,
           detail: `${i.summary}${i.tier ? ` (tier ${i.tier})` : ""} · owner ${i.assignee ?? "unassigned"}.`,
-          href: `/raid`,
+          href: `/items/${i.key}`,
           key: i.key,
+          keys: [i.key],
           weight: -due,
           question: "Who makes this decision and by when? What do they need from us?",
         });

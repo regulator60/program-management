@@ -41,7 +41,10 @@ export function UpdateComposer({
   back,
   label = "Add update",
   defaultOpen,
+  commentKey,
 }: {
+  /** Jira item that receives the optional comment (defaults to issueKey). */
+  commentKey?: string;
   issueKey: string;
   scope?: string;
   back: string;
@@ -59,6 +62,7 @@ export function UpdateComposer({
         <input type="hidden" name="key" value={issueKey} />
         <input type="hidden" name="back" value={back} />
         {scope && <input type="hidden" name="scope" value={scope} />}
+        {commentKey && <input type="hidden" name="commentKey" value={commentKey} />}
         <fieldset className="flex flex-wrap gap-1.5">
           <legend className="mb-1 text-xs font-medium text-ink-2">Is it moving?</legend>
           {options.map((o) => (
@@ -74,7 +78,7 @@ export function UpdateComposer({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="inline-flex items-center gap-1.5 text-xs text-ink-2">
             <input type="checkbox" name="toJira" className="h-4 w-4 accent-[var(--accent)]" />
-            Also add as a Jira comment (staged)
+            Also add as a Jira comment{commentKey ? ` on ${commentKey}` : ""} (staged)
           </label>
           <Button size="sm" type="submit">
             Save update

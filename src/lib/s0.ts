@@ -4,13 +4,16 @@ import { buildInsights, type Insight, type Severity } from "./insights";
 import { groupReport, matchesFilter, type Filter, type GroupReport, type Model } from "./model";
 import { actionInScope, type ProgramAction } from "./programActions";
 import type { IssueView } from "./store";
-import type { ActionItem, IssueChange, ItemUpdate, ProgramAssignment, Scope } from "./types";
+import { itemContext, smartQuestion, type ItemContext } from "./context";
+import type { ActionItem, IssueChange, ItemUpdate, Note, ProgramAssignment, Scope } from "./types";
 
 const DAY = 86_400_000;
 const fmt = (iso: string) =>
   new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 export type AgendaItem = {
+  /** What the question is grounded in, e.g. "Overdue action item (due Nov 13)". */
+  basis?: string;
   id: string;
   section: "wins" | "discuss" | "review" | "asks" | "actions" | "changes";
   severity: Severity;
@@ -26,6 +29,10 @@ export type ReviewTopic = {
   reasons: string[];
   question: string;
   lastUpdate: ItemUpdate | null;
+  /** Our records about it: linked actions, meeting-note mentions, updates. */
+  context: ItemContext;
+  /** What the question is grounded in, when it isn't generic. */
+  basis: string | null;
   /** Most recent of: our last update, Jira's last change. */
   lastActivity: string | null;
   daysSinceActivity: number | null;
@@ -69,7 +76,7 @@ export function scopeFilter(s: Scope): Filter {
 export function buildS0(
   m: Model,
   scope: Scope,
-  data: { actions: ActionItem[]; programs: ProgramAction[]; updates?: ItemUpdate[] },
+  data: { actions: ActionItem[]; programs: ProgramAction[]; updates?: ItemUpdate[]; notes?: Note[] },
   opts: { lookaheadDays?: number } = {},
 ): S0 {
   const latestUpdate = new Map<string, ItemUpdate>();
@@ -128,11 +135,13 @@ export function buildS0(
     .map((c) => ({ ...c, issue: m.byKey.get(c.key) }));
 
   // ---- risks & decisions to review
+  const ctxData = { actions: data.actions, notes: data.notes ?? [], updates: data.updates ?? [] };
   const { topics: reviewTopics, quiet: quietRaid } = reviewRaid(
     m,
     [...raid("risk"), ...raid("decision")],
     latestUpdate,
     m.cfg.analysis.staleDays ?? 7,
+    ctxData,
   );
 
   // ---- agenda
@@ -144,7 +153,16 @@ export function buildS0(
   for (const i of insights
     .filter((x) => x.severity !== "good" && !["action", "risk", "decision"].includes(x.category))
     .slice(0, 8)) {
-    agenda.push({ id: i.id, section: "discuss", severity: i.severity, title: i.title, question: i.question ?? "What should we do?", href: i.href });
+    const smart = i.keys?.length ? smartQuestion(itemContext(i.keys, ctxData, today, depUpdateKeys(i.keys)), today) : null;
+    agenda.push({
+      id: i.id,
+      section: "discuss",
+      severity: i.severity,
+      title: i.title,
+      question: smart?.question ?? i.question ?? "What should we do?",
+      basis: smart?.basis,
+      href: i.href,
+    });
   }
   for (const t of reviewTopics) {
     agenda.push({
@@ -153,6 +171,7 @@ export function buildS0(
       severity: t.severity,
       title: `${t.issue.level === "risk" ? "Risk" : "Decision"} ${t.issue.key}: ${t.issue.summary}`,
       question: `${t.reasons.join(" · ")}. ${t.question}`,
+      basis: t.basis ?? undefined,
       href: `#raid-${t.issue.key}`,
     });
   }
@@ -203,7 +222,13 @@ export function buildS0(
  *  - its target date has passed, or lands within 14 days
  *  - it spans multiple tracks (tier 1–2) and has any of the above, or no owner
  */
-export function reviewRaid(m: Model, items: IssueView[], latest: Map<string, ItemUpdate>, staleDays: number) {
+export function reviewRaid(
+  m: Model,
+  items: IssueView[],
+  latest: Map<string, ItemUpdate>,
+  staleDays: number,
+  ctxData: { actions: ActionItem[]; notes: Note[]; updates: ItemUpdate[] } = { actions: [], notes: [], updates: [] },
+) {
   const today = m.today;
   const dayDiff = (a: string, b: string) => Math.round((Date.parse(b.slice(0, 10)) - Date.parse(a.slice(0, 10))) / DAY);
   const topics: ReviewTopic[] = [];
@@ -271,6 +296,15 @@ export function reviewRaid(m: Model, items: IssueView[], latest: Map<string, Ite
       if (issue.tier === 1) bump("serious");
     }
 
+    // Prefer a question grounded in our own records over the generic one.
+    const context = itemContext([issue.key], ctxData, today);
+    const smart = smartQuestion(context, today, issue.assignee);
+    const overdueAction = context.actions.find((a) => a.status === "open" && a.dueDate && a.dueDate < today);
+    if (overdueAction) {
+      reasons.push(`Action "${overdueAction.text.slice(0, 40)}${overdueAction.text.length > 40 ? "…" : ""}" overdue`);
+      bump("warning");
+      weight += 15;
+    }
     if (!reasons.length) {
       quiet.push({ issue, lastUpdate });
       continue;
@@ -279,7 +313,9 @@ export function reviewRaid(m: Model, items: IssueView[], latest: Map<string, Ite
       issue,
       severity,
       reasons,
-      question: question || "Any change?",
+      context,
+      basis: smart?.basis ?? null,
+      question: smart?.question ?? (question || "Any change?"),
       lastUpdate,
       lastActivity,
       daysSinceActivity: since,
@@ -290,3 +326,8 @@ export function reviewRaid(m: Model, items: IssueView[], latest: Map<string, Ite
   return { topics, quiet };
 }
 
+
+/** Dependency-level updates are stored as "dep:PRED:SUCC". */
+export function depUpdateKeys(keys: string[]) {
+  return keys.length === 2 ? [`dep:${keys[0]}:${keys[1]}`] : [];
+}

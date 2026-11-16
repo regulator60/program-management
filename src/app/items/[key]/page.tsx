@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { discardEditAction, stageEditsAction } from "@/app/actions";
+import { addActionItemAction, discardEditAction, stageEditsAction } from "@/app/actions";
 import { Button, Card, DateCell, Empty, HealthBadge, KeyLink, LevelTag, PageHeader, StatusPill, Table, Td, Th, fmtDate, inputCls } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { childMap, isLate } from "@/lib/hierarchy";
+import { depHref } from "@/lib/insights";
 import { loadModel } from "@/lib/model";
-import { listChanges, listItemUpdates, listPendingEdits } from "@/lib/store";
+import { listActionItems, listChanges, listItemUpdates, listNotes, listPendingEdits } from "@/lib/store";
+import { itemContext, smartQuestion } from "@/lib/context";
+import { Combobox, MultiCombobox } from "@/components/combobox";
+import { labelOptions, peopleOptions, statusOptions } from "@/lib/options";
 import { LastUpdate, UpdateComposer } from "@/components/updates";
 import { LEVEL_LABEL } from "@/lib/types";
 
@@ -44,6 +48,9 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
   );
   const history = listChanges(db, { key });
   const updates = listItemUpdates(db, key);
+  const actions = listActionItems(db);
+  const ctx = itemContext([key], { actions, notes: listNotes(db), updates }, m.today);
+  const smart = smartQuestion(ctx, m.today, i.assignee);
   const pending = listPendingEdits(db, { unpushedOnly: true }).filter((e) => e.key === key);
   const jiraUrl = m.cfg.jira.baseUrl ? `${m.cfg.jira.baseUrl.replace(/\/+$/, "")}/browse/${key}` : null;
 
@@ -112,7 +119,10 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
                         <Td><HealthBadge health={d.health} /></Td>
                         <Td className="whitespace-nowrap text-xs text-muted">{d.predecessor.key === key ? "needed by" : "waits on"}</Td>
                         <Td><KeyLink k={other.key} external={!other.inScope} /> {other.summary}</Td>
-                        <Td className="text-xs text-muted">{d.reason}</Td>
+                        <Td className="text-xs text-muted">
+                          {d.reason}{" "}
+                          <Link href={depHref(d)} className="font-medium text-accent hover:underline">Open</Link>
+                        </Td>
                       </tr>
                     );
                   })}
@@ -129,6 +139,46 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
                 })}
               </div>
             )}
+          </Card>
+
+          <Card title="Action items & meeting notes" subtitle={`Linked to or mentioning ${key}`}>
+            {smart && (
+              <div className="mb-4 rounded-lg border border-accent/30 bg-accent-soft px-4 py-3 text-sm">
+                <div className="font-semibold text-fg">Ask next</div>
+                <div className="text-fg">{smart.question}</div>
+                <div className="mt-0.5 text-xs text-muted">Based on: {smart.basis}</div>
+              </div>
+            )}
+            {ctx.actions.length === 0 && ctx.mentions.length === 0 && <p className="text-sm text-muted">Nothing linked yet.</p>}
+            <ul className="grid gap-2 text-sm">
+              {ctx.actions.map((a) => (
+                <li key={a.id} className={a.status === "done" ? "text-muted line-through" : "text-fg"}>
+                  • {a.text}{" "}
+                  <span className="text-xs text-muted">
+                    {a.owner ?? "no owner"}
+                    {a.dueDate && ` · due ${fmtDate(a.dueDate)}`}
+                  </span>
+                </li>
+              ))}
+              {ctx.mentions.slice(0, 5).map((n, idx) => (
+                <li key={`${n.noteId}-${idx}`} className="text-ink-2">
+                  &ldquo;{n.line}&rdquo;{" "}
+                  <Link href={`/notes#note-${n.noteId}`} className="text-xs text-muted hover:underline">
+                    {n.title}, {fmtDate(n.date)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <form action={addActionItemAction} className="mt-4 grid gap-2 rounded-lg border border-line bg-panel-2 p-3">
+              <input type="hidden" name="back" value={`/items/${encodeURIComponent(key)}`} />
+              <input type="hidden" name="links" value={key} />
+              <input name="text" required placeholder={`New action item for ${key}…`} className={inputCls} />
+              <div className="grid grid-cols-[1fr_160px_auto] gap-2">
+                <Combobox name="owner" options={peopleOptions(m, actions)} placeholder="Owner" />
+                <input name="dueDate" type="date" className={inputCls} aria-label="Due date" />
+                <Button size="sm" type="submit">Add</Button>
+              </div>
+            </form>
           </Card>
 
           <Card title="Updates" subtitle="Status notes captured in S0 calls or here, newest first">
@@ -174,9 +224,9 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
                 <label className="grid gap-1"><span className="text-xs text-muted">Start date</span><input type="date" name="startDate" defaultValue={i.startDate ?? ""} className={inputCls} /></label>
                 <label className="grid gap-1"><span className="text-xs text-muted">Due date</span><input type="date" name="dueDate" defaultValue={i.dueDate ?? ""} className={inputCls} /></label>
               </div>
-              <label className="grid gap-1"><span className="text-xs text-muted">Status (must match a Jira workflow status)</span><input name="status" defaultValue={i.status} className={inputCls} /></label>
-              <label className="grid gap-1"><span className="text-xs text-muted">Assignee (Jira username for pushes)</span><input name="assignee" defaultValue={i.assignee ?? ""} className={inputCls} /></label>
-              <label className="grid gap-1"><span className="text-xs text-muted">Labels (space or comma separated)</span><input name="labels" defaultValue={i.labels.join(" ")} className={inputCls + " font-mono text-xs"} /></label>
+              <label className="grid gap-1"><span className="text-xs text-muted">Status (must match a Jira workflow status)</span><Combobox name="status" options={statusOptions(m)} defaultValue={i.status} placeholder="Status" /></label>
+              <label className="grid gap-1"><span className="text-xs text-muted">Assignee (Jira username for pushes)</span><Combobox name="assignee" options={peopleOptions(m)} defaultValue={i.assignee ?? ""} placeholder="Unassigned" /></label>
+              <label className="grid gap-1"><span className="text-xs text-muted">Labels</span><MultiCombobox name="labels" options={labelOptions(m)} defaultValues={i.labels} placeholder="Add labels…" /></label>
               <Button type="submit">Stage changes</Button>
               <p className="text-xs text-muted">
                 Nothing is sent to Jira until you push from <Link href="/sync" className="text-accent underline">Data &amp; Jira sync</Link>.

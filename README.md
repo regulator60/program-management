@@ -21,7 +21,7 @@ Outcome
 | **S0 weekly review** | One page per sub-track and per platform for the weekly call with the people doing the work and the track leads. It has a generated **agenda** (wins; issues to discuss, each with a question to put to the team; **risks & decisions to review**; program asks; overdue actions; dates that moved), what changed this week, upcoming milestones, dependencies (what we wait on, who waits on us), risks, decisions, that team's program asks with one-click "done", its action items, and quick capture of new actions. A risk or decision is raised for review when there's no update in N days (Settings → Analysis), it was last marked blocked or stalled, its date is past or within 14 days, or it has no owner. Capture an **update** (Moving / Stalled / Blocked / Resolved plus a note) right on the page, optionally staged as a Jira comment. Updates also show on each item's page. Printable. |
 | **Plan hierarchy** | The collapsible tree. Each node shows its rolled-up progress. `OVERRUN` means child work finishes after the parent is due. `DEP×n` means the item has dependency conflicts. |
 | **Gantt** | Milestones are diamonds, work is bars. Arrows show dependencies, and linked items from other tracks appear in their own section. |
-| **Dependencies** | Every blocks / depends-on link touching your items, graded *conflict / overdue / tight / no date / ok / done*. It also lists which linked items **changed dates** recently. |
+| **Dependencies** | Every blocks / depends-on link touching your items, graded *conflict / overdue / tight / no date / ok / done*. It also lists which linked items **changed dates** recently. Each dependency has **its own page** (`/dependencies/<from>/<to>`), opened from anywhere a dependency is shown. It has both sides with dates, owners and teams; an **Ask next** question grounded in your records; updates on the dependency (optionally staged as a Jira comment on your side); meeting-note lines that mention it; date history; the milestone and outcome it puts at risk; and its action items, with a form to add more. You can also stage date changes on either side. |
 | **Risks & decisions** | Grouped by tier. Tier 3 is your track only; tiers 1 and 2 span multiple tracks. |
 | **Action items** | Two kinds. **Program action items** are asks from the program, from the Jira intake board (the `intake` label) or added in the app. Each is assigned to sub-tracks and/or platforms, and every team marks its own part done. Intake items labelled `Domain:` assign themselves to those platforms. When all teams finish, one click stages the Jira item to Done with a summary comment. **Team action items** are smaller follow-ups from calls and notes. Each belongs to a sub-track and/or platform and links to the milestones, dependencies and risks it moves forward. Jira keys in the text are linked automatically, and actions under a team heading in notes are assigned to that team. |
 | **Meeting notes** | Import a Google Doc, attach a downloaded file (.docx/.txt/.md/.html), paste text, or pull a Confluence page. Action items are extracted automatically (owner and due date included), and Jira updates are suggested for you to review and stage. |
@@ -57,6 +57,26 @@ npm run desktop:install      # macOS, Linux or Windows
 ```
 
 Each new commit on `main` is built and tested on the side before it replaces the running version. If anything fails, the old version keeps running. Details are in [`docs/DESKTOP.md`](docs/DESKTOP.md).
+
+### Smart questions
+
+The questions in S0 agendas, on dependency pages and on item pages come from your own records, not a generic script. For each item the app gathers the action items linked to it (or mentioning its key), the meeting-note lines that mention it, and its status updates. It then asks about the most relevant one:
+
+1. An **overdue action**: "Sam Patel: 'Get a committed date for fraud scoring API' was due Nov 13. Is it done, and what did it turn up?"
+2. A **blocked or stalled update**: "On Nov 5 this was blocked: 'No response from View Account'. Is that still the case, and who can move it?"
+3. An **open action**: "Jordan Kim: how is 'Draft re-plan options' going (due Nov 20)?"
+4. The **last update**, then the latest **meeting-note mention**.
+
+Each question shows what it's "Based on". It falls back to a generic question only when there's nothing on record.
+
+### Pickers
+
+Wherever a value repeats, you pick instead of typing:
+- **Owners:** people from Jira and from action items.
+- **Linked Jira items:** each with its key and summary.
+- **Labels, statuses, and issue types** (in Settings).
+
+You can always type a value that isn't in the list and press Enter to add it.
 
 ## Getting data in
 
@@ -117,6 +137,8 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/lib/insights.ts`: ranks what needs attention and writes the summary
 - `src/components/ui.tsx`, `src/components/select.tsx`, `src/app/globals.css`: design system (tokens, badges, tables, cards; Radix UI dropdowns)
 - `src/lib/s0.ts`: S0 agenda and risk/decision review topics
+- `src/lib/context.ts`: per-item context (actions, note mentions, updates) and grounded questions
+- `src/components/combobox.tsx`, `src/lib/options.ts`: type-ahead pickers and their known values
 - `src/lib/store.ts`: SQLite access, staged edits, change history
 - `src/lib/notes.ts`, `src/lib/noteInsights.ts`, `src/lib/documents.ts`: action-item extraction, Jira suggestions, Google Docs / .docx reading
 - `scripts/build-demo-site.mjs`: static snapshot for GitHub Pages
