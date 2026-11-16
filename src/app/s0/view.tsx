@@ -42,7 +42,9 @@ import {
 } from "@/components/ui";
 import { getDb } from "@/lib/db";
 import { flattenTree, isLate } from "@/lib/hierarchy";
-import { depHref, headline } from "@/lib/insights";
+import { depHref } from "@/lib/insights";
+import { buildBrief } from "@/lib/brief";
+import { Briefing } from "@/components/Briefing";
 import { loadModel } from "@/lib/model";
 import { allScopes, listProgramActions } from "@/lib/programActions";
 import { buildS0, type AgendaItem } from "@/lib/s0";
@@ -97,6 +99,12 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
     notes: listNotes(db),
   });
   const people = peopleOptions(m, actions, listAssignments(db));
+  const brief = buildBrief(
+    m,
+    s0.filter,
+    { actions, notes: listNotes(db), updates: listItemUpdates(db), programs: listProgramActions(db, m, actions) },
+    { rag: s0.report.rag, subject: scope.name },
+  );
   const scopeKey = scopeId(scope);
   const back = s0Href(scope);
   const nodes = new Map(flattenTree(m.tree).map((n) => [n.issue.key, n]));
@@ -124,8 +132,11 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
               S0 weekly review · {scope.kind === "subtrack" ? "Sub-track" : "Platform"}
             </div>
             <h1 className="text-[28px] font-semibold leading-tight tracking-tight text-fg">{scope.name}</h1>
-            <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{headline(s0.insights, s0.report.rag, scope.name)}</p>
-            <p className="mt-2 text-xs text-muted">Week of {fmtDate(m.today)} · audience: the people doing the work and track leads</p>
+            <p className="mt-2 text-[15px] leading-relaxed text-ink-2">{brief.summary}</p>
+            <p className="mt-2 text-xs text-muted">
+              Weekly status review · Week of{" "}
+              {new Date(m.today + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}
+            </p>
           </div>
           <div className="flex flex-col items-end gap-3">
             <RagBadge rag={s0.report.rag} />
@@ -141,6 +152,10 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
         <Stat label="Open risks" value={s0.risks.length} icon={ShieldAlert} hint={`${s0.decisions.length} open decision${s0.decisions.length === 1 ? "" : "s"}`} />
         <Stat label="Program asks open" value={openAsks.length} icon={Flag} tone={openAsks.length ? "amber" : "green"} hint={`${s0.programAsks.length - openAsks.length} done`} />
         <Stat label="Action items open" value={openActions.length} icon={ListChecks} tone={overdueActions.length ? "amber" : undefined} hint={overdueActions.length ? `${overdueActions.length} overdue` : "None overdue"} />
+      </div>
+
+      <div className="mb-6">
+        <Briefing brief={brief} perColumn={3} title="This week at a glance" />
       </div>
 
       <div className="mb-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">

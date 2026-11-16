@@ -103,3 +103,20 @@ export function smartQuestion(ctx: ItemContext, today: string, owner?: string | 
   }
   return null;
 }
+
+/**
+ * One factual sentence on where things stand, from our records, for briefings.
+ * Returns null when nothing is on record (callers say so explicitly).
+ */
+export function contextLine(ctx: ItemContext, today: string): string | null {
+  const open = ctx.actions.filter((a) => a.status === "open");
+  const overdue = open.find((a) => a.dueDate && a.dueDate < today);
+  const last = ctx.updates[0];
+  if (overdue) return `${who(overdue.owner, "The owner")}'s action "${clip(overdue.text, 70)}" was due ${fmt(overdue.dueDate!)} and is still open.`;
+  if (last && (last.progress === "blocked" || last.progress === "stalled"))
+    return `Marked ${PROGRESS_LABEL[last.progress].toLowerCase()} on ${fmt(last.createdAt)}: "${clip(last.body, 80)}"`;
+  if (open[0]) return `${who(open[0].owner, "Someone")} is working on it: "${clip(open[0].text, 70)}"${open[0].dueDate ? ` (due ${fmt(open[0].dueDate)})` : ""}.`;
+  if (last) return `Latest update (${fmt(last.createdAt)}): "${clip(last.body, 80)}"`;
+  if (ctx.mentions[0]) return `Last discussed in "${ctx.mentions[0].title}" (${fmt(ctx.mentions[0].date)}): "${clip(ctx.mentions[0].line, 80)}"`;
+  return null;
+}
