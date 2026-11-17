@@ -423,95 +423,112 @@ export function ThemeToggle() {
   );
 }
 
-// ---------------------------------------------------------------- in-page sections
+// ---------------------------------------------------------------- tabs
 
-export type PageSection = { id: string; label: string; count?: number; tone?: "red" | "amber" };
+export type TabDef = { id: string; label: string; count?: number; tone?: "red" | "amber" };
+
+const subscribeHash = (cb: () => void) => {
+  window.addEventListener("hashchange", cb);
+  return () => window.removeEventListener("hashchange", cb);
+};
 
 /**
- * A sticky bar of jump links for a long page. It highlights the section in
- * view as you scroll, and keeps the URL hash in step so a section can be shared.
+ * Tabs for a long page: only the chosen tab's content shows, and the tab bar
+ * stays pinned under the header. The panels are the children; each one marks
+ * itself with data-tab="<id>". The chosen tab lives in the URL hash
+ * (#risks), so it survives a reload and can be shared. Printing shows every tab.
  */
-export function SectionNav({ sections }: { sections: PageSection[] }) {
-  const ids = sections.map((s) => s.id).join(",");
-  const [active, setActive] = useState(sections[0]?.id ?? "");
-  // After a click, keep that tab highlighted until the user scrolls themselves:
-  // a section near the bottom of the page can't scroll all the way up.
-  const pinned = useRef<string | null>(null);
+export function Tabs({ tabs, label, children }: { tabs: TabDef[]; label: string; children: React.ReactNode }) {
+  const hash = useSyncExternalStore(
+    subscribeHash,
+    () => decodeURIComponent(window.location.hash.slice(1)),
+    () => "",
+  );
+  // The hash is a tab id (#risks), or an item inside a tab (#raid-BIGP-202, after saving an update there).
+  const isTab = tabs.some((t) => t.id === hash);
+  const owner =
+    !isTab && hash && typeof document !== "undefined"
+      ? (document.getElementById(hash)?.closest<HTMLElement>("[data-tab]")?.dataset.tab ?? null)
+      : null;
+  const active = isTab ? hash : owner && tabs.some((t) => t.id === owner) ? owner : (tabs[0]?.id ?? "");
+  const anchor = useRef<HTMLDivElement>(null);
+  // An item link opens its tab; scroll to the item once that tab is showing.
   useEffect(() => {
-    const els = ids
-      .split(",")
-      .map((id) => document.getElementById(id))
-      .filter((e): e is HTMLElement => !!e);
-    if (!els.length) return;
-    const update = () => {
-      if (pinned.current) return;
-      let cur = els[0].id;
-      for (const el of els) if (el.getBoundingClientRect().top <= 150) cur = el.id;
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = els[els.length - 1].id;
-      setActive(cur);
-    };
-    const unpin = () => {
-      pinned.current = null;
-    };
-    const raf = requestAnimationFrame(update);
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    for (const ev of ["wheel", "touchmove", "keydown", "mousedown"] as const) window.addEventListener(ev, unpin, { passive: true });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-      for (const ev of ["wheel", "touchmove", "keydown", "mousedown"] as const) window.removeEventListener(ev, unpin);
-    };
-  }, [ids]);
+    if (owner) document.getElementById(hash)?.scrollIntoView({ block: "center" });
+  }, [owner, hash]);
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const select = (id: string, focus = false) => {
+    const url = `${window.location.pathname}${window.location.search}${id === tabs[0]?.id ? "" : `#${id}`}`;
+    history.replaceState(history.state, "", url);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    // If the page is scrolled past the tab bar, bring the new tab's top into view.
+    const top = anchor.current ? anchor.current.getBoundingClientRect().top + window.scrollY - 56 : 0;
+    if (window.scrollY > top) window.scrollTo({ top });
+    if (focus) buttons.current[tabs.findIndex((t) => t.id === id)]?.focus();
+  };
 
   return (
-    <nav
-      aria-label="Sections on this page"
-      className="no-print sticky top-14 z-10 -mx-4 mb-6 border-b border-line bg-background/90 px-4 backdrop-blur md:-mx-8 md:px-8"
-    >
-      <ul className="-mb-px flex gap-1 overflow-x-auto">
-        {sections.map((s) => {
-          const on = s.id === active;
-          return (
-            <li key={s.id} className="shrink-0">
-              <a
-                href={`#${s.id}`}
-                aria-current={on ? "location" : undefined}
-                onClick={(e) => {
-                  const el = document.getElementById(s.id);
-                  if (!el) return;
-                  e.preventDefault();
-                  pinned.current = s.id;
-                  el.scrollIntoView({ behavior: "smooth", block: "start" });
-                  history.replaceState(null, "", `#${s.id}`);
-                  setActive(s.id);
+    <>
+      <div ref={anchor} aria-hidden />
+      <nav className="no-print sticky top-14 z-10 -mx-4 mb-6 border-b border-line bg-background/90 px-4 backdrop-blur md:-mx-8 md:px-8">
+        <div
+          role="tablist"
+          aria-label={label}
+          className="-mb-px flex gap-1 overflow-x-auto"
+          onKeyDown={(e) => {
+            const i = tabs.findIndex((t) => t.id === active);
+            const next = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+            if (next === null) return;
+            e.preventDefault();
+            select(tabs[(next + tabs.length) % tabs.length].id, true);
+          }}
+        >
+          {tabs.map((t, i) => {
+            const on = t.id === active;
+            return (
+              <button
+                key={t.id}
+                ref={(el) => {
+                  buttons.current[i] = el;
                 }}
+                type="button"
+                role="tab"
+                id={`tab-${t.id}`}
+                aria-selected={on}
+                aria-controls={`panel-${t.id}`}
+                tabIndex={on ? 0 : -1}
+                onClick={() => select(t.id)}
                 className={
-                  "flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition " +
+                  "flex shrink-0 items-center gap-2 rounded-t-md border-b-2 px-3 py-3 text-sm font-medium outline-none transition focus-visible:bg-accent-soft " +
                   (on ? "border-accent text-fg" : "border-transparent text-muted hover:border-line-strong hover:text-fg")
                 }
               >
-                {s.label}
-                {s.count !== undefined && (
+                {t.label}
+                {t.count !== undefined && (
                   <span
                     className={
                       "tabular rounded-full px-1.5 text-[11px] font-semibold " +
-                      (s.tone === "red" && s.count
+                      (t.tone === "red" && t.count
                         ? "bg-critical-soft text-critical-ink"
-                        : s.tone === "amber" && s.count
+                        : t.tone === "amber" && t.count
                           ? "bg-warning-soft text-warning-ink"
                           : "bg-panel-2 text-ink-2")
                     }
                   >
-                    {s.count}
+                    {t.count}
                   </span>
                 )}
-              </a>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      {/* Hide every panel but the active one on screen; print shows them all. The id is one of ours, never user input. */}
+      <style>{`@media screen { [data-tabs] > [data-tab]:not([data-tab="${active}"]) { display: none; } }`}</style>
+      <div data-tabs role="tabpanel" id={`panel-${active}`} aria-labelledby={`tab-${active}`}>
+        {children}
+      </div>
+    </>
   );
 }
