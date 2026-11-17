@@ -8,11 +8,14 @@ import {
   LayoutDashboard,
   ListChecks,
   ListTree,
+  Monitor,
+  Moon,
   NotebookPen,
   RefreshCw,
   Search,
   Settings,
   ShieldAlert,
+  Sun,
   TriangleAlert,
   Users,
   Waypoints,
@@ -21,7 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Select } from "./select";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -337,5 +340,178 @@ export function MobileNav() {
         </div>
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------- theme
+
+export type ThemeChoice = "light" | "dark" | "system";
+const THEME_KEY = "theme";
+const THEME_EVENT = "themechange";
+
+function readTheme(): ThemeChoice {
+  try {
+    const t = localStorage.getItem(THEME_KEY);
+    return t === "light" || t === "dark" ? t : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function setTheme(t: ThemeChoice) {
+  const root = document.documentElement;
+  if (t === "system") root.removeAttribute("data-theme");
+  else root.dataset.theme = t;
+  try {
+    if (t === "system") localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, t);
+  } catch {
+    // Storage blocked (private window): the choice lasts for this page only.
+  }
+  window.dispatchEvent(new Event(THEME_EVENT));
+}
+
+/** Runs before the page paints (see layout.tsx), so a stored choice never flashes the wrong theme. */
+export const THEME_BOOT_SCRIPT = `try{var t=localStorage.getItem("${THEME_KEY}");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
+
+/**
+ * Light / Dark / System switch. Light is handy when presenting to executives,
+ * dark for everyday work; System follows the computer's setting. The choice is
+ * remembered in this browser. Printing is always light.
+ */
+export function ThemeToggle() {
+  const theme = useSyncExternalStore(
+    (cb) => {
+      window.addEventListener(THEME_EVENT, cb);
+      window.addEventListener("storage", cb);
+      return () => {
+        window.removeEventListener(THEME_EVENT, cb);
+        window.removeEventListener("storage", cb);
+      };
+    },
+    readTheme,
+    () => "system" as ThemeChoice,
+  );
+  const options: { value: ThemeChoice; label: string; icon: LucideIcon }[] = [
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "system", label: "System", icon: Monitor },
+  ];
+  return (
+    <div role="radiogroup" aria-label="Color theme" className="inline-flex items-center rounded-lg border border-line bg-panel p-0.5 shadow-sm">
+      {options.map((o) => {
+        const on = theme === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            title={o.value === "system" ? "Follow the system setting" : `${o.label} mode`}
+            onClick={() => setTheme(o.value)}
+            className={
+              "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition " +
+              (on ? "bg-accent-soft text-accent" : "text-muted hover:text-fg")
+            }
+          >
+            <o.icon className="h-3.5 w-3.5" aria-hidden />
+            <span className="hidden lg:inline">{o.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- in-page sections
+
+export type PageSection = { id: string; label: string; count?: number; tone?: "red" | "amber" };
+
+/**
+ * A sticky bar of jump links for a long page. It highlights the section in
+ * view as you scroll, and keeps the URL hash in step so a section can be shared.
+ */
+export function SectionNav({ sections }: { sections: PageSection[] }) {
+  const ids = sections.map((s) => s.id).join(",");
+  const [active, setActive] = useState(sections[0]?.id ?? "");
+  // After a click, keep that tab highlighted until the user scrolls themselves:
+  // a section near the bottom of the page can't scroll all the way up.
+  const pinned = useRef<string | null>(null);
+  useEffect(() => {
+    const els = ids
+      .split(",")
+      .map((id) => document.getElementById(id))
+      .filter((e): e is HTMLElement => !!e);
+    if (!els.length) return;
+    const update = () => {
+      if (pinned.current) return;
+      let cur = els[0].id;
+      for (const el of els) if (el.getBoundingClientRect().top <= 150) cur = el.id;
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = els[els.length - 1].id;
+      setActive(cur);
+    };
+    const unpin = () => {
+      pinned.current = null;
+    };
+    const raf = requestAnimationFrame(update);
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    for (const ev of ["wheel", "touchmove", "keydown", "mousedown"] as const) window.addEventListener(ev, unpin, { passive: true });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      for (const ev of ["wheel", "touchmove", "keydown", "mousedown"] as const) window.removeEventListener(ev, unpin);
+    };
+  }, [ids]);
+
+  return (
+    <nav
+      aria-label="Sections on this page"
+      className="no-print sticky top-14 z-10 -mx-4 mb-6 border-b border-line bg-background/90 px-4 backdrop-blur md:-mx-8 md:px-8"
+    >
+      <ul className="-mb-px flex gap-1 overflow-x-auto">
+        {sections.map((s) => {
+          const on = s.id === active;
+          return (
+            <li key={s.id} className="shrink-0">
+              <a
+                href={`#${s.id}`}
+                aria-current={on ? "location" : undefined}
+                onClick={(e) => {
+                  const el = document.getElementById(s.id);
+                  if (!el) return;
+                  e.preventDefault();
+                  pinned.current = s.id;
+                  el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  history.replaceState(null, "", `#${s.id}`);
+                  setActive(s.id);
+                }}
+                className={
+                  "flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition " +
+                  (on ? "border-accent text-fg" : "border-transparent text-muted hover:border-line-strong hover:text-fg")
+                }
+              >
+                {s.label}
+                {s.count !== undefined && (
+                  <span
+                    className={
+                      "tabular rounded-full px-1.5 text-[11px] font-semibold " +
+                      (s.tone === "red" && s.count
+                        ? "bg-critical-soft text-critical-ink"
+                        : s.tone === "amber" && s.count
+                          ? "bg-warning-soft text-warning-ink"
+                          : "bg-panel-2 text-ink-2")
+                    }
+                  >
+                    {s.count}
+                  </span>
+                )}
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }

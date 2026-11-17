@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
-import { CommandPalette, Flash, MobileNav, Nav, SearchButton } from "@/components/client";
+import { CommandPalette, Flash, MobileNav, Nav, SearchButton, THEME_BOOT_SCRIPT, ThemeToggle } from "@/components/client";
 import { DEMO_MODE } from "@/lib/paths";
 import "./globals.css";
 
@@ -15,7 +15,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`}>
+    // data-theme is set before paint by the script below, so React shouldn't flag the difference.
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="flex min-h-full">
         <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-sidebar px-3 py-5 md:flex print:hidden">
           <div className="mb-7 flex items-center gap-2.5 px-3">
@@ -46,6 +50,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <MobileNav />
             </Suspense>
             <SearchButton />
+            <div className="ml-auto">
+              <ThemeToggle />
+            </div>
           </header>
           <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 md:px-8 md:py-8">
             {DEMO_MODE && (

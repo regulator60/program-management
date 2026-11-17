@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Tailwind's dark: variant follows the same rules as the tokens below. */
+@custom-variant dark {
+  @media screen and (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+  @media screen {
+    &:where([data-theme="dark"] *) {
+      @slot;
+    }
+  }
+}
+
 /*
  * Design tokens. Light is the primary theme (executive readouts, projectors,
  * printing); dark is a selected theme from the same ramps, not an inversion.
@@ -46,8 +60,46 @@
   --shadow-pop: 0 10px 30px rgb(15 23 42 / 0.14), 0 2px 6px rgb(15 23 42 / 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
+/*
+ * Dark theme. It follows the system setting unless the user picks Light or
+ * Dark with the switch in the header (stored as <html data-theme>). It applies
+ * on screen only, so printed pages and PDFs are always light.
+ */
+@media screen and (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --background: #0d1117;
+    --foreground: #e8edf4;
+    --ink-2: #b6c2d2;
+    --muted: #8b98aa;
+    --panel: #151b24;
+    --panel-2: #1a222d;
+    --line: #263040;
+    --line-strong: #344155;
+    --accent: #5598e7;
+    --accent-soft: #16263d;
+    --sidebar: #0a0f16;
+    --sidebar-ink: #a9b6c8;
+    --sidebar-active: #1c5cab;
+    --good-soft: #10291a;
+    --warning-soft: #2e2510;
+    --serious-soft: #2f1d15;
+    --critical-soft: #2f1517;
+    --good-ink: #7fd77f;
+    --warning-ink: #f6c968;
+    --serious-ink: #f2ab8c;
+    --critical-ink: #f09a9a;
+    --progress-done: #3987e5;
+    --progress-active: #184f95;
+    --progress-track: #263040;
+    --series-1: #3987e5;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.5);
+  }
+}
+
+@media screen {
+  :root:where([data-theme="dark"]) {
     color-scheme: dark;
     --background: #0d1117;
     --foreground: #e8edf4;

@@ -19,7 +19,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { addActionItemAction, updateActionItemAction, updateAssignmentAction } from "@/app/actions";
-import { PrintButton } from "@/components/client";
+import { PrintButton, SectionNav } from "@/components/client";
 import {
   Button,
   Card,
@@ -121,6 +121,18 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
     <>
       <ScopeTabs scopes={scopes} active={scope} />
 
+      <SectionNav
+        sections={[
+          { id: "summary", label: "Summary" },
+          { id: "glance", label: "At a glance", count: brief.callouts.filter((c) => c.kind !== "progress").length, tone: brief.callouts.some((c) => c.kind === "attention") ? "red" : undefined },
+          { id: "agenda", label: "Agenda", count: s0.agenda.length },
+          { id: "plan", label: "Milestones & dependencies", count: s0.milestones.length + s0.deps.length, tone: s0.report.milestones.late + s0.report.deps.conflict + s0.report.deps.overdue ? "red" : undefined },
+          { id: "risks", label: "Risks & decisions", count: s0.reviewTopics.length, tone: s0.reviewTopics.length ? "amber" : undefined },
+          { id: "actions", label: "Asks & actions", count: openAsks.length + openActions.length, tone: overdueActions.length ? "amber" : undefined },
+        ]}
+      />
+
+      <div id="summary" className={SECTION_CLS}>
       <section className="relative mb-6 overflow-hidden rounded-2xl border border-line bg-panel p-6 shadow-card">
         <div
           className={cx("absolute inset-y-0 left-0 w-1.5", s0.report.rag === "red" ? "bg-critical" : s0.report.rag === "amber" ? "bg-warning" : "bg-good")}
@@ -145,7 +157,7 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
         </div>
       </section>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <Stat label="Milestones done" value={`${s0.report.milestones.done}/${s0.report.milestones.total}`} icon={Flag} hint={s0.report.milestones.late ? `${s0.report.milestones.late} late` : "None late"} tone={s0.report.milestones.late ? "red" : undefined} />
         <Stat label="Due in 6 weeks" value={s0.milestones.filter((i) => i.dueDate && i.dueDate <= new Date(Date.parse(m.today) + 42 * 86_400_000).toISOString().slice(0, 10)).length} icon={CalendarClock} hint="Open milestones" />
         <Stat label="Dependency issues" value={s0.report.deps.conflict + s0.report.deps.overdue} icon={Waypoints} tone={s0.report.deps.conflict + s0.report.deps.overdue ? "red" : "green"} hint={`${s0.report.deps.tight} tight · ${s0.report.deps.unknown} undated`} />
@@ -153,12 +165,13 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
         <Stat label="Program asks open" value={openAsks.length} icon={Flag} tone={openAsks.length ? "amber" : "green"} hint={`${s0.programAsks.length - openAsks.length} done`} />
         <Stat label="Action items open" value={openActions.length} icon={ListChecks} tone={overdueActions.length ? "amber" : undefined} hint={overdueActions.length ? `${overdueActions.length} overdue` : "None overdue"} />
       </div>
-
-      <div className="mb-6">
-        <Briefing brief={brief} perColumn={3} title="This week at a glance" />
       </div>
 
-      <div className="mb-6 grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+      <section id="glance" className={SECTION_CLS}>
+        <Briefing brief={brief} perColumn={3} title="This week at a glance" />
+      </section>
+
+      <section id="agenda" className={cx(SECTION_CLS, "grid gap-6 xl:grid-cols-[1.5fr_1fr]")}>
         <Card title="Agenda" icon={MessageSquareText} subtitle="Generated from this week's data. Work top to bottom; capture actions as you go." flush>
           {agendaSections.length === 0 ? (
             <p className="p-5 text-sm text-muted">Nothing flagged. Quick status round and close.</p>
@@ -226,9 +239,9 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
             )}
           </Card>
         </div>
-      </div>
+      </section>
 
-      <div className="mb-6 grid gap-6 xl:grid-cols-2">
+      <section id="plan" className={cx(SECTION_CLS, "grid gap-6 xl:grid-cols-2")}>
         <Card title="Upcoming milestones" icon={CalendarClock} subtitle="Late, due in the next 6 weeks, or the next three coming up" flush>
           {s0.milestones.length === 0 ? (
             <p className="p-5 text-sm text-muted">No open milestones.</p>
@@ -288,13 +301,13 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
             </ul>
           )}
         </Card>
-      </div>
+      </section>
 
+      <section id="risks" className={SECTION_CLS}>
       <Card
         title="Risks & decisions to review"
         icon={ShieldAlert}
         subtitle={`Raised when there's no update in ${m.cfg.analysis.staleDays} days, it's blocked or stalled, overdue or due soon, or has no owner. Capture what's moving right here.`}
-        className="mb-6"
         flush
       >
         {s0.reviewTopics.length === 0 ? (
@@ -387,8 +400,9 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
           </details>
         )}
       </Card>
+      </section>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <section id="actions" className={cx(SECTION_CLS, "grid gap-6 xl:grid-cols-2")}>
         <Card title="Program asks for this team" icon={Flag} subtitle="Mark this team's part done here" flush>
           {s0.programAsks.length === 0 ? (
             <p className="p-5 text-sm text-muted">No program asks assigned to {scope.name}.</p>
@@ -466,10 +480,13 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
             </ul>
           )}
         </Card>
-      </div>
+      </section>
     </>
   );
 }
+
+/** Space above each section so the sticky header and section bar don't cover its title. */
+const SECTION_CLS = "mb-6 scroll-mt-32";
 
 function ScopeTabs({ scopes, active }: { scopes: Scope[]; active: Scope }) {
   const group = (kind: Scope["kind"], label: string) => {
@@ -498,7 +515,7 @@ function ScopeTabs({ scopes, active }: { scopes: Scope[]; active: Scope }) {
     );
   };
   return (
-    <div className="no-print mb-5 flex flex-wrap gap-x-6 gap-y-2">
+    <div className="no-print mb-3 flex flex-wrap gap-x-6 gap-y-2">
       {group("subtrack", "Sub-tracks")}
       {group("platform", "Platforms")}
     </div>
