@@ -9,7 +9,6 @@ import {
   ListChecks,
   MessageSquareText,
   NotebookPen,
-  Plus,
   Scale,
   ShieldAlert,
   Users,
@@ -21,7 +20,6 @@ import { Suspense } from "react";
 import { addActionItemAction, updateActionItemAction, updateAssignmentAction } from "@/app/actions";
 import { PrintButton, Tabs } from "@/components/client";
 import {
-  Button,
   Card,
   DateCell,
   Empty,
@@ -37,7 +35,6 @@ import {
   ToneBadge,
   cx,
   fmtDate,
-  inputCls,
   relDays,
 } from "@/components/ui";
 import { getDb } from "@/lib/db";
@@ -49,7 +46,7 @@ import { loadModel } from "@/lib/model";
 import { allScopes, listProgramActions } from "@/lib/programActions";
 import { buildS0, type AgendaItem } from "@/lib/s0";
 import { listActionItems, listAssignments, listItemUpdates, listNotes } from "@/lib/store";
-import { Combobox, MultiCombobox } from "@/components/combobox";
+import { AddActionDialog } from "@/components/AddActionDialog";
 import { issueOptions, peopleOptions } from "@/lib/options";
 import { LastUpdate, UpdateComposer } from "@/components/updates";
 import { parseScope, scopeId, type Scope } from "@/lib/types";
@@ -123,6 +120,7 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
 
       <Tabs
         label="S0 review sections"
+        end={<AddActionDialog action={addActionItemAction} scope={scope} people={people} issues={issueOptions(m)} />}
         tabs={[
           { id: "summary", label: "Summary" },
           { id: "glance", label: "At a glance", count: brief.callouts.filter((c) => c.kind !== "progress").length, tone: brief.callouts.some((c) => c.kind === "attention") ? "red" : undefined },
@@ -201,19 +199,6 @@ async function S0Page({ scopeParam }: { scopeParam: Promise<string | null> }) {
         </Card>
 
         <div className="grid content-start gap-6">
-          <Card title="Capture an action" icon={Plus} subtitle={`Owned by ${scope.name}. Mention a Jira key to link it.`}>
-            <form action={addActionItemAction} className="grid gap-2">
-              <input type="hidden" name="back" value={`${back}#agenda`} />
-              <input type="hidden" name={scope.kind === "subtrack" ? "subTrack" : "platform"} value={scope.name} />
-              <input name="text" required placeholder="e.g. Ask View Account to confirm VIEW-50 date" className={inputCls} />
-              <div className="grid grid-cols-2 gap-2">
-                <Combobox name="owner" options={people} placeholder="Owner" />
-                <input name="dueDate" type="date" className={inputCls} />
-              </div>
-              <MultiCombobox name="links" options={issueOptions(m)} placeholder="Link to milestones, dependencies, risks… (optional)" />
-              <div><Button type="submit">Add action</Button></div>
-            </form>
-          </Card>
           <Card title="Changed this week" icon={History} flush>
             {s0.changes.length === 0 ? (
               <p className="p-5 text-sm text-muted">No date or status changes in the last 7 days.</p>
