@@ -438,7 +438,18 @@ const subscribeHash = (cb: () => void) => {
  * itself with data-tab="<id>". The chosen tab lives in the URL hash
  * (#risks), so it survives a reload and can be shared. Printing shows every tab.
  */
-export function Tabs({ tabs, label, children }: { tabs: TabDef[]; label: string; children: React.ReactNode }) {
+export function Tabs({
+  tabs,
+  label,
+  children,
+  end,
+}: {
+  tabs: TabDef[];
+  label: string;
+  children: React.ReactNode;
+  /** Shown at the right end of the pinned tab bar, on every tab (e.g. an "Add action" button). */
+  end?: React.ReactNode;
+}) {
   const hash = useSyncExternalStore(
     subscribeHash,
     () => decodeURIComponent(window.location.hash.slice(1)),
@@ -471,11 +482,11 @@ export function Tabs({ tabs, label, children }: { tabs: TabDef[]; label: string;
   return (
     <>
       <div ref={anchor} aria-hidden />
-      <nav className="no-print sticky top-14 z-10 -mx-4 mb-6 border-b border-line bg-background/90 px-4 backdrop-blur md:-mx-8 md:px-8">
+      <nav className="no-print sticky top-14 z-10 -mx-4 mb-6 flex items-center gap-3 border-b border-line bg-background/90 px-4 backdrop-blur md:-mx-8 md:px-8">
         <div
           role="tablist"
           aria-label={label}
-          className="-mb-px flex gap-1 overflow-x-auto"
+          className="-mb-px flex min-w-0 flex-1 gap-1 overflow-x-auto"
           onKeyDown={(e) => {
             const i = tabs.findIndex((t) => t.id === active);
             const next = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
@@ -523,6 +534,7 @@ export function Tabs({ tabs, label, children }: { tabs: TabDef[]; label: string;
             );
           })}
         </div>
+        {end}
       </nav>
       {/* Hide every panel but the active one on screen; print shows them all. The id is one of ours, never user input. */}
       <style>{`@media screen { [data-tabs] > [data-tab]:not([data-tab="${active}"]) { display: none; } }`}</style>
