@@ -145,6 +145,28 @@ Edits are staged locally and marked `PENDING`. Push them in one of two ways:
 
 Step-by-step instructions are in [`docs/JIRA_IMPORT.md`](docs/JIRA_IMPORT.md), and in the app at `/docs/jira-import`.
 
+## Assistant (preview, off by default)
+
+Press **⌘J** (Ctrl+J on Windows) or click **Ask** at the bottom right to open a chat panel on any page. It knows which page you're on.
+
+- **Ask about the plan.** For example: "What needs attention this week?", "Why is Account dashboard GA at risk?" or "What did we agree about the token format?" It answers from this app's data and links every Jira key it mentions. It uses read-only tools for items, the briefing, dependencies, risks and decisions, action items, meeting notes and recent changes.
+- **Tell it news.** For example: "View Account says Balances API v3 now lands Jan 30." It looks up the items involved and **proposes** changes: new dates or statuses, Jira comments, status updates, new action items, or actions to mark done. Each proposal has a checkbox, plus **Stage selected** and **Dismiss** buttons.
+- **Staging:** Jira changes are only staged, and reach Jira when you push from Data & Jira sync. Nothing changes until you stage, and each proposal can be applied only once.
+- **Conversations** are kept in the local database. The panel shows your latest one; start a fresh one with the new-chat button.
+
+**Data:** every question sends your message, plus the program data the assistant looks up, to the configured AI endpoint. So the assistant is **off unless you turn it on** in `.env.local`:
+
+| Setting | Meaning |
+| --- | --- |
+| `ASSISTANT_ENABLED=demo` | Works only while the database holds the fictional demo data. It pauses itself as soon as real Jira data is loaded. |
+| `ASSISTANT_ENABLED=on` | Works with real data. Use this only once the endpoint is approved for your program data. |
+| `ANTHROPIC_BASE_URL` | Where requests go. Leave it unset for Anthropic's API, or point it at your company's approved gateway. |
+| `ANTHROPIC_API_KEY` | The key. The SDK sends it as `Authorization: Bearer <key>`, so a gateway must accept that header. |
+| `ASSISTANT_MODEL` / `ASSISTANT_EFFORT` | Default `claude-opus-5-5` / `medium`. |
+| `ASSISTANT_REFUSAL_FALLBACK` | Retries a declined request on another model, server-side. On by default for Anthropic's API, off when a custom base URL is set. |
+
+Restart the app after changing these. The static demo site has no server, so the assistant isn't available there.
+
 ## Demo site (GitHub Pages)
 
 `.github/workflows/pages.yml` builds a **read-only static snapshot on fictional demo data** on every push. Pushes to `main` then deploy it to `https://<owner>.github.io/<repo>/`.
@@ -173,6 +195,7 @@ GitHub Pages only serves static files, so the real app (sync, edits, imports) ca
 - `src/components/combobox.tsx`, `src/lib/options.ts`: type-ahead pickers and their known values
 - `src/lib/store.ts`: SQLite access, staged edits, change history
 - `src/lib/notes.ts`, `src/lib/noteInsights.ts`, `src/lib/documents.ts`: action-item extraction, Jira suggestions, Google Docs / .docx reading
+- `src/lib/assistant/`, `src/components/Assistant.tsx`, `src/app/api/assistant/`: the chat assistant (config, tools, conversation loop, staging proposals)
 - `src/lib/noteMatch.ts`: matching note lines to Jira items by key or name, running-notes sections, duplicate detection helpers
 - `scripts/build-demo-site.mjs`: static snapshot for GitHub Pages
 - `scripts/desktop-runner.mjs`: runs the app on your desktop and updates it from `main`

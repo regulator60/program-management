@@ -157,6 +157,26 @@ CREATE TABLE IF NOT EXISTS note_imports (
   at TEXT NOT NULL
 );
 
+-- In-app assistant conversations (local only). Each row is one message in
+-- Messages API form (api), plus what the chat panel shows (display_*). Rows are
+-- only ever appended, so the conversation sent back to the model never changes.
+CREATE TABLE IF NOT EXISTS assistant_chats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS assistant_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL REFERENCES assistant_chats(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,          -- user | assistant
+  api TEXT NOT NULL,           -- JSON content blocks as sent to / returned by the model
+  display_text TEXT,           -- shown in the panel (null for tool-loop steps)
+  proposals TEXT,              -- JSON ProposedChange[] on the final assistant message of a turn
+  applied TEXT,                -- JSON indexes of proposals already staged or dismissed
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assistant_messages_chat ON assistant_messages(chat_id, id);
+
 CREATE TABLE IF NOT EXISTS sync_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL,
