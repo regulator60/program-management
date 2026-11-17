@@ -138,7 +138,7 @@ describe("jira suggestions from notes", () => {
     expect(pick("BIGP-160", "dueDate")?.value).toBe("2027-01-05");
     expect(pick("BIGP-110", "status")).toBeUndefined();
     expect(pick("BIGP-100", "dueDate")).toBeUndefined(); // two keys on the line → comments only
-    expect(pick("VIEW-50", "comment")?.value).toContain('From meeting notes "Sync" (2026-11-14)');
+    expect(pick("VIEW-50", "comment")?.value).toContain('Discussed in meeting notes "Sync" (Nov 14, 2026):\n- Discussed BIGP-100 and VIEW-50 together');
     expect(s.some((x) => x.key === "NOPE-1")).toBe(false);
   });
 

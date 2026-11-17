@@ -141,7 +141,15 @@ async function Item({ params }: { params: PageProps<"/items/[key]">["params"] })
             )}
           </Card>
 
-          <Card title="Action items & meeting notes" subtitle={`Linked to or mentioning ${key}`}>
+          <Card
+            title="Action items & meeting notes"
+            subtitle={`Linked to or mentioning ${key}, by key or by name`}
+            actions={
+              <Link href={`/notes?link=${encodeURIComponent(key)}`} className="whitespace-nowrap text-xs font-medium text-accent hover:underline">
+                + Attach meeting notes
+              </Link>
+            }
+          >
             {smart && (
               <div className="mb-4 rounded-lg border border-accent/30 bg-accent-soft px-4 py-3 text-sm">
                 <div className="font-semibold text-fg">Ask next</div>

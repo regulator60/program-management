@@ -140,7 +140,20 @@ async function DependencyView({ params }: { params: PageProps<"/dependencies/[fr
             <UpdateComposer issueKey={depKey} commentKey={mine.key} back={back} defaultOpen={ctx.updates.length === 0} />
           </Card>
 
-          <Card title="From meeting notes" icon={NotebookPen} subtitle={`Lines that mention ${predKey} or ${succKey}`} flush>
+          <Card
+            title="From meeting notes"
+            icon={NotebookPen}
+            subtitle={`Lines that mention ${predKey} or ${succKey}, by key or by name`}
+            actions={
+              <Link
+                href={`/notes?link=${encodeURIComponent(`${predKey},${succKey}`)}`}
+                className="whitespace-nowrap text-xs font-medium text-accent hover:underline"
+              >
+                + Attach meeting notes
+              </Link>
+            }
+            flush
+          >
             {ctx.mentions.length === 0 ? (
               <p className="p-5 text-sm text-muted">Not mentioned in any meeting notes yet.</p>
             ) : (
