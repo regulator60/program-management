@@ -158,7 +158,7 @@ PAGES_BASE_PATH=/program-management NEXT_PUBLIC_DEMO_MODE=1 npm run build:demo-s
 ```
 
 GitHub Pages only serves static files, so the real app (sync, edits, imports) can't run there; run it locally. The repo and the Pages site are **public**, so never put real program data in either. To run the app with real data, see [`docs/HOSTING.md`](docs/HOSTING.md).
-
+https://regulator60.github.io/program-management/
 ## Code map
 
 - `src/lib/jira/`: REST client, normalisation, classification, file import, CSV export
