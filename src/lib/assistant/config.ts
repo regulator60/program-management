@@ -1,7 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
+import { getConfig } from "../config";
 
 /**
- * The assistant is OFF unless ASSISTANT_ENABLED is set in .env.local:
+ * The assistant is OFF unless turned on in Settings → Assistant, or with
+ * ASSISTANT_ENABLED in .env.local (Settings wins when set):
  *   ASSISTANT_ENABLED=demo  only while the database holds the fictional demo data
  *   ASSISTANT_ENABLED=on    with real data too (only once an approved endpoint is configured)
  *
@@ -17,18 +19,42 @@ import type { DatabaseSync } from "node:sqlite";
  */
 export type AssistantMode = "off" | "demo" | "on";
 
-export function assistantConfig() {
+const envMode = (): AssistantMode => {
   const raw = (process.env.ASSISTANT_ENABLED ?? "").trim().toLowerCase();
-  const mode: AssistantMode = ["1", "true", "on", "yes"].includes(raw) ? "on" : raw === "demo" ? "demo" : "off";
-  const baseURL = process.env.ANTHROPIC_BASE_URL?.trim() || null;
-  const effort = (process.env.ASSISTANT_EFFORT ?? "").trim().toLowerCase();
-  const fb = process.env.ASSISTANT_REFUSAL_FALLBACK?.trim();
+  return ["1", "true", "on", "yes"].includes(raw) ? "on" : raw === "demo" ? "demo" : "off";
+};
+
+/**
+ * Effective assistant settings: Settings → Assistant wins where it's set,
+ * otherwise the environment variables. The API key always comes from the
+ * environment (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN, or an `ant auth login` profile).
+ */
+export function assistantConfig(db: DatabaseSync) {
+  const s = getConfig(db).assistant;
+  const mode: AssistantMode = s.mode || envMode();
+  const baseURL = s.baseUrl.trim() || process.env.ANTHROPIC_BASE_URL?.trim() || null;
+  const envEffort = (process.env.ASSISTANT_EFFORT ?? "").trim().toLowerCase();
+  const effort = s.effort || (["low", "medium", "high"].includes(envEffort) ? envEffort : "medium");
+  const fbEnv = process.env.ASSISTANT_REFUSAL_FALLBACK?.trim();
+  const fallbacks =
+    s.refusalFallback === "on"
+      ? true
+      : s.refusalFallback === "off"
+        ? false
+        : fbEnv
+          ? fbEnv === "1" || fbEnv.toLowerCase() === "true"
+          : !baseURL;
   return {
     mode,
-    model: process.env.ASSISTANT_MODEL?.trim() || "claude-opus-5-5",
-    effort: (["low", "medium", "high"].includes(effort) ? effort : "medium") as "low" | "medium" | "high",
+    /** Where the mode came from, for the Settings page. */
+    modeSource: (s.mode ? "settings" : process.env.ASSISTANT_ENABLED ? "environment" : "default") as "settings" | "environment" | "default",
+    model: s.model.trim() || process.env.ASSISTANT_MODEL?.trim() || "claude-opus-5-5",
+    effort: effort as "low" | "medium" | "high",
     baseURL,
-    fallbacks: fb ? fb === "1" || fb.toLowerCase() === "true" : !baseURL,
+    /** Only a base URL set in Settings is passed explicitly; otherwise the SDK reads ANTHROPIC_BASE_URL itself. */
+    baseURLFromSettings: s.baseUrl.trim() || null,
+    fallbacks,
+    hasKey: !!(process.env.ANTHROPIC_API_KEY?.trim() || process.env.ANTHROPIC_AUTH_TOKEN?.trim()),
   };
 }
 
@@ -43,14 +69,20 @@ export type AssistantStatus = {
 
 /** Whether the assistant may run right now. In demo mode it refuses as soon as real data is loaded. */
 export function assistantStatus(db: DatabaseSync): AssistantStatus {
-  const cfg = assistantConfig();
+  const cfg = assistantConfig(db);
   const base = { mode: cfg.mode, model: cfg.model, endpoint: cfg.baseURL ?? "Anthropic API (default)" };
   if (cfg.mode === "off") {
     return {
       ...base,
       available: false,
-      reason:
-        "The assistant is turned off. To try it on the demo data, set ASSISTANT_ENABLED=demo and an API key in .env.local, then restart the app.",
+      reason: "The assistant is turned off. Turn it on in Settings → Assistant (demo data only is the safe way to try it).",
+    };
+  }
+  if (cfg.mode === "on" && cfg.modeSource === "settings" && !getConfig(db).assistant.approvedForRealData) {
+    return {
+      ...base,
+      available: false,
+      reason: "The assistant is set to work with real data, but the endpoint hasn't been confirmed as approved. Confirm it in Settings → Assistant.",
     };
   }
   if (cfg.mode === "demo") {
@@ -60,7 +92,7 @@ export function assistantStatus(db: DatabaseSync): AssistantStatus {
         ...base,
         available: false,
         reason:
-          "The assistant is in demo-only mode and real data is loaded, so it's paused: questions would send real program data to the AI endpoint. Load the demo data to try it, or set ASSISTANT_ENABLED=on once an approved endpoint is configured.",
+          "The assistant is set to demo data only and real data is loaded, so it's paused: questions would send real program data to the AI endpoint. Load the demo data to try it, or switch it on for real data in Settings → Assistant once the endpoint is approved.",
       };
     }
   }

@@ -1,6 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { connection } from "next/server";
 import { assistantStatus } from "@/lib/assistant/config";
+import { describeAssistantError as describe } from "@/lib/assistant/errors";
 import { chatTurns, latestChatId, runTurn } from "@/lib/assistant/run";
 import { getDb } from "@/lib/db";
 
@@ -32,20 +32,4 @@ export async function POST(req: Request) {
   } catch (e) {
     return json({ error: describe(e) }, 502);
   }
-}
-
-/** Errors in words the user can act on. */
-function describe(e: unknown) {
-  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) {
-    return "The AI endpoint rejected the credentials. Check ANTHROPIC_API_KEY (and ANTHROPIC_BASE_URL if you use a gateway) in .env.local.";
-  }
-  if (e instanceof Anthropic.NotFoundError) return "The AI endpoint doesn't know that model. Check ASSISTANT_MODEL.";
-  if (e instanceof Anthropic.RateLimitError) return "The AI endpoint is rate limiting requests. Try again in a minute.";
-  if (e instanceof Anthropic.BadRequestError) return `The AI endpoint rejected the request: ${e.message}`;
-  if (e instanceof Anthropic.APIConnectionError) return "Couldn't reach the AI endpoint. Check your network or ANTHROPIC_BASE_URL.";
-  if (e instanceof Anthropic.APIError) return `The AI endpoint returned an error (${e.status ?? "no status"}). Try again.`;
-  if (e instanceof Error && /api key|apiKey|authToken|credentials/i.test(e.message)) {
-    return "No API key is set. Add ANTHROPIC_API_KEY to .env.local and restart the app.";
-  }
-  return e instanceof Error ? e.message : String(e);
 }
