@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
 import { CommandPalette, Flash, MobileNav, Nav, SearchButton, THEME_BOOT_SCRIPT, ThemeToggle } from "@/components/client";
+import { Assistant } from "@/components/Assistant";
 import { DEMO_MODE } from "@/lib/paths";
 import "./globals.css";
 
@@ -70,6 +71,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <Suspense>
           <CommandPalette />
         </Suspense>
+        {/* The static demo site has no server, so no assistant there. */}
+        {!DEMO_MODE && <Assistant />}
       </body>
     </html>
   );
