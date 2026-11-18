@@ -2,6 +2,8 @@
 
 A program management tool for running one track of a large program, built around Jira Server / Data Center.
 
+**Live demo:** [regulator60.github.io/program-management](https://regulator60.github.io/program-management/). It's a read-only snapshot on fictional data; see [Demo site](#demo-site-github-pages).
+
 It works through this hierarchy:
 
 ```
@@ -169,7 +171,13 @@ Restart the app after changing these. The static demo site has no server, so the
 
 ## Demo site (GitHub Pages)
 
-`.github/workflows/pages.yml` builds a **read-only static snapshot on fictional demo data** on every push. Pushes to `main` then deploy it to `https://<owner>.github.io/<repo>/`.
+**[https://regulator60.github.io/program-management/](https://regulator60.github.io/program-management/)**
+
+This is a public, read-only demo of the app, built only from the fictional demo data in `src/lib/seed.ts`. Real Jira data never goes on it. It shows the same pages as the real app: the executive overview, S0 weekly review, timeline, plan hierarchy, dependencies, risks and decisions, action items and meeting notes. Use it to show people what the tool looks like, or to check a change after it merges.
+
+- **How it updates:** `.github/workflows/pages.yml` builds the static snapshot on every push, and each merge to `main` deploys it. No manual steps are needed.
+- **What doesn't work there:** it has no server, so anything that saves or fetches is turned off. That covers Jira sync, edits and staging, imports, the sub-track and platform filters, and the assistant. A banner on every page says so.
+- **Where your real data lives:** only in the app running on your own computer (see [Keep it running on your desktop](#keep-it-running-on-your-desktop)), which reads the local database and is never published.
 
 One-time setup: in the repo's **Settings → Pages**, set **Source** to **GitHub Actions**. If it stays on "Deploy from a branch", GitHub's built-in Jekyll build publishes the README and races this workflow on every push.
 
