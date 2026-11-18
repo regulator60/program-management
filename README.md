@@ -156,7 +156,15 @@ Press **⌘J** (Ctrl+J on Windows) or click **Ask** at the bottom right to open 
 - **Staging:** Jira changes are only staged, and reach Jira when you push from Data & Jira sync. Nothing changes until you stage, and each proposal can be applied only once.
 - **Conversations** are kept in the local database. The panel shows your latest one; start a fresh one with the new-chat button.
 
-**Data:** every question sends your message, plus the program data the assistant looks up, to the configured AI endpoint. So the assistant is **off unless you turn it on** in `.env.local`:
+**Data:** every question sends your message, plus the program data the assistant looks up, to the configured AI endpoint. So the assistant is **off unless you turn it on**.
+
+**Turn it on in Settings → Assistant.** Changes apply right away, with no restart needed. On that page:
+- **Mode:** Off, **Demo data only**, **On, with real data**, or Follow `.env.local`. "On, with real data" can only be saved after you tick a box confirming your organization has approved the endpoint for this program's data.
+- **Endpoint, model, effort and refusal fallback** can each be set there.
+- **Test connection** sends one short message with no program data, to check the endpoint, key and model.
+- **The API key** stays in `.env.local` (`ANTHROPIC_API_KEY`) and is never stored in the database. The page shows whether it's set.
+
+The environment variables below are fallbacks for anything left empty in Settings:
 
 | Setting | Meaning |
 | --- | --- |
@@ -167,7 +175,7 @@ Press **⌘J** (Ctrl+J on Windows) or click **Ask** at the bottom right to open 
 | `ASSISTANT_MODEL` / `ASSISTANT_EFFORT` | Default `claude-opus-5-5` / `medium`. |
 | `ASSISTANT_REFUSAL_FALLBACK` | Retries a declined request on another model, server-side. On by default for Anthropic's API, off when a custom base URL is set. |
 
-Restart the app after changing these. The static demo site has no server, so the assistant isn't available there.
+Restart the app after changing environment variables (Settings changes need no restart). The static demo site has no server, so the assistant isn't available there.
 
 ## Demo site (GitHub Pages)
 

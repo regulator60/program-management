@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { assistantConfig, assistantStatus } from "@/lib/assistant/config";
+import { describeAssistantError } from "@/lib/assistant/errors";
+import { assistantClient } from "@/lib/assistant/run";
 import { redirect } from "next/navigation";
 import { DEFAULT_CONFIG, getConfig, saveConfig, type AppConfig } from "@/lib/config";
 import {
@@ -542,6 +545,63 @@ export async function resetSettingsAction() {
   await attempt("/settings?section=advanced", () => {
     saveConfig(getDb(), DEFAULT_CONFIG);
     return "Settings reset to defaults.";
+  });
+}
+
+/** Settings → Assistant. The API key is never taken here: it stays in .env.local. */
+export async function saveAssistantSettingsAction(fd: FormData) {
+  await attempt("/settings?section=assistant", () => {
+    const db = getDb();
+    const cfg = structuredClone(getConfig(db));
+    const mode = str(fd, "mode");
+    if (!["", "off", "demo", "on"].includes(mode)) throw new Error("Pick how the assistant should run.");
+    const approved = fd.get("approved") === "on";
+    if (mode === "on" && !approved) {
+      throw new Error("To use the assistant with real program data, confirm that the endpoint is approved for it.");
+    }
+    const baseUrl = str(fd, "baseUrl");
+    if (baseUrl) {
+      let u: URL;
+      try {
+        u = new URL(baseUrl);
+      } catch {
+        throw new Error("The endpoint must be a full URL, like https://ai-gateway.yourcompany.com.");
+      }
+      const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+      if (u.protocol !== "https:" && !(local && u.protocol === "http:")) throw new Error("The endpoint must use https.");
+    }
+    const effort = str(fd, "effort");
+    const fallback = str(fd, "refusalFallback");
+    cfg.assistant = {
+      mode: mode as AppConfig["assistant"]["mode"],
+      approvedForRealData: approved,
+      baseUrl: baseUrl.replace(/\/+$/, ""),
+      model: str(fd, "model"),
+      effort: (["low", "medium", "high"].includes(effort) ? effort : "") as AppConfig["assistant"]["effort"],
+      refusalFallback: (["on", "off"].includes(fallback) ? fallback : "auto") as AppConfig["assistant"]["refusalFallback"],
+    };
+    saveConfig(db, cfg);
+    const st = assistantStatus(db);
+    return st.available ? `Assistant settings saved. It's ${st.mode === "demo" ? "on for demo data only" : "on"}.` : `Assistant settings saved. ${st.reason}`;
+  });
+}
+
+/** Send a one-line test message (no program data) to check the endpoint, key and model. */
+export async function testAssistantAction() {
+  await attempt("/settings?section=assistant", async () => {
+    const cfg = assistantConfig(getDb());
+    let res;
+    try {
+      res = await assistantClient(cfg).messages.create({
+        model: cfg.model,
+        max_tokens: 256,
+        output_config: { effort: "low" },
+        messages: [{ role: "user", content: "Reply with the single word OK." }],
+      });
+    } catch (e) {
+      throw new Error(describeAssistantError(e));
+    }
+    return `Connected to ${cfg.baseURL ?? "Anthropic's API"} with ${res.model}. The endpoint, key and model work.`;
   });
 }
 

@@ -5,7 +5,8 @@ import { loadModel } from "../model";
 import { seedDemo } from "../seed";
 import { getIssue, listActionItems, listItemUpdates, listPendingEdits } from "../store";
 import { applyProposals } from "./apply";
-import { assistantStatus } from "./config";
+import { getConfig, saveConfig } from "../config";
+import { assistantConfig, assistantStatus } from "./config";
 import { runTurn, type CallModel } from "./run";
 import { runTool, type ProposedChange } from "./tools";
 
@@ -51,6 +52,35 @@ describe("assistant availability", () => {
 
     process.env.ASSISTANT_ENABLED = "on";
     expect(assistantStatus(db).available).toBe(true);
+  });
+});
+
+describe("assistant settings", () => {
+  test("Settings override the environment; real-data mode needs the approval box", () => {
+    const db = fresh();
+    process.env.ASSISTANT_ENABLED = "demo";
+    process.env.ANTHROPIC_BASE_URL = "https://env-gateway.example.com";
+    expect(assistantConfig(db)).toMatchObject({ mode: "demo", modeSource: "environment", baseURL: "https://env-gateway.example.com", baseURLFromSettings: null, fallbacks: false });
+
+    const cfg = getConfig(db);
+    saveConfig(db, { ...cfg, assistant: { ...cfg.assistant, mode: "off" } });
+    expect(assistantStatus(db)).toMatchObject({ available: false, mode: "off" });
+
+    saveConfig(db, {
+      ...cfg,
+      assistant: { mode: "on", approvedForRealData: false, baseUrl: "https://gw.example.com", model: "corp-claude", effort: "high", refusalFallback: "auto" },
+    });
+    const eff = assistantConfig(db);
+    expect(eff).toMatchObject({ mode: "on", modeSource: "settings", baseURL: "https://gw.example.com", baseURLFromSettings: "https://gw.example.com", model: "corp-claude", effort: "high", fallbacks: false });
+    expect(assistantStatus(db)).toMatchObject({ available: false });
+    expect(assistantStatus(db).reason).toMatch(/approved/);
+
+    saveConfig(db, { ...getConfig(db), assistant: { ...getConfig(db).assistant, approvedForRealData: true } });
+    expect(assistantStatus(db)).toMatchObject({ available: true, mode: "on", endpoint: "https://gw.example.com", model: "corp-claude" });
+
+    // Back to "follow the environment".
+    saveConfig(db, { ...getConfig(db), assistant: { ...getConfig(db).assistant, mode: "", baseUrl: "", model: "" } });
+    expect(assistantConfig(db)).toMatchObject({ mode: "demo", modeSource: "environment", model: "claude-opus-5-5" });
   });
 });
 

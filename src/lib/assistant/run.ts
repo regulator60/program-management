@@ -41,15 +41,14 @@ function systemPrompt(m: Model) {
   ].join("\n");
 }
 
-function client() {
-  // Credentials and base URL come from the environment (ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL).
-  return new Anthropic();
+/** A client for the configured endpoint. The key comes from the environment; the base URL from Settings or ANTHROPIC_BASE_URL. */
+export function assistantClient(cfg: ReturnType<typeof assistantConfig>) {
+  return cfg.baseURLFromSettings ? new Anthropic({ baseURL: cfg.baseURLFromSettings }) : new Anthropic();
 }
 
 /** The real model call, with server-side refusal fallback where it's available. */
-export function defaultCall(): CallModel {
-  const cfg = assistantConfig();
-  const c = client();
+export function defaultCall(cfg: ReturnType<typeof assistantConfig>): CallModel {
+  const c = assistantClient(cfg);
   if (!cfg.fallbacks) return (p) => c.messages.create(p);
   // On a policy decline, the API re-runs the request on a fallback model in the same call.
   return (p) =>
@@ -116,8 +115,8 @@ export async function runTurn(
   db: DatabaseSync,
   opts: { chatId?: number | null; text: string; page?: string | null; call?: CallModel },
 ): Promise<{ chatId: number; turns: ChatTurn[] }> {
-  const cfg = assistantConfig();
-  const call = opts.call ?? defaultCall();
+  const cfg = assistantConfig(db);
+  const call = opts.call ?? defaultCall(cfg);
   const m = loadModel(db);
   let chatId = opts.chatId ?? null;
   if (!chatId || !db.prepare("SELECT 1 FROM assistant_chats WHERE id = ?").get(chatId)) {

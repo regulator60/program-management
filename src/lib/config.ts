@@ -71,6 +71,22 @@ export type AppConfig = {
     /** Risks/decisions with no update for this many days are flagged for an update in S0. */
     staleDays: number;
   };
+  /**
+   * The in-app assistant (Settings → Assistant). Empty values fall back to the
+   * environment variables (ASSISTANT_ENABLED, ANTHROPIC_BASE_URL, ASSISTANT_MODEL,
+   * ASSISTANT_EFFORT). The API key always stays in the environment.
+   */
+  assistant: {
+    /** "" = follow ASSISTANT_ENABLED; otherwise off | demo | on. */
+    mode: "" | "off" | "demo" | "on";
+    /** Confirmed on the Settings page that the endpoint is approved for real program data (required for "on"). */
+    approvedForRealData: boolean;
+    baseUrl: string;
+    model: string;
+    effort: "" | "low" | "medium" | "high";
+    /** auto = on for Anthropic's API, off for a custom endpoint. */
+    refusalFallback: "auto" | "on" | "off";
+  };
 };
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -113,6 +129,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   links: { containsOutward: "contains" },
   analysis: { bufferDays: 5, recentChangeDays: 14, staleDays: 7 },
+  assistant: { mode: "", approvedForRealData: false, baseUrl: "", model: "", effort: "", refusalFallback: "auto" },
 };
 
 function deepMerge<T>(base: T, override: unknown): T {
